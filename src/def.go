@@ -16,7 +16,7 @@ import (
 	"imuslab.com/zoraxy/mod/access"
 	"imuslab.com/zoraxy/mod/acme"
 	"imuslab.com/zoraxy/mod/auth"
-	"imuslab.com/zoraxy/mod/auth/sso"
+	"imuslab.com/zoraxy/mod/auth/sso/authelia"
 	"imuslab.com/zoraxy/mod/database"
 	"imuslab.com/zoraxy/mod/dockerux"
 	"imuslab.com/zoraxy/mod/dynamicproxy/loadbalance"
@@ -128,7 +128,9 @@ var (
 	staticWebServer    *webserv.WebServer        //Static web server for hosting simple stuffs
 	forwardProxy       *forwardproxy.Handler     //HTTP Forward proxy, basically VPN for web browser
 	loadBalancer       *loadbalance.RouteManager //Global scope loadbalancer, store the state of the lb routing
-	ssoHandler         *sso.SSOHandler           //Single Sign On handler
+
+	//Authentication Provider
+	autheliaRouter *authelia.AutheliaRouter //Authelia router for Authelia authentication
 
 	//Helper modules
 	EmailSender       *email.Sender         //Email sender that handle email sending

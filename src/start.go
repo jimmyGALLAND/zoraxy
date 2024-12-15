@@ -12,6 +12,7 @@ import (
 	"imuslab.com/zoraxy/mod/access"
 	"imuslab.com/zoraxy/mod/acme"
 	"imuslab.com/zoraxy/mod/auth"
+	"imuslab.com/zoraxy/mod/auth/sso/authelia"
 	"imuslab.com/zoraxy/mod/database"
 	"imuslab.com/zoraxy/mod/database/dbinc"
 	"imuslab.com/zoraxy/mod/dockerux"
@@ -136,21 +137,13 @@ func startupSequence() {
 		panic(err)
 	}
 
-	/*
-		//Create an SSO handler
-		ssoHandler, err = sso.NewSSOHandler(&sso.SSOConfig{
-			SystemUUID:       nodeUUID,
-			PortalServerPort: 5488,
-			AuthURL:          "http://auth.localhost",
-			Database:         sysdb,
-			Logger:           SystemWideLogger,
-		})
-		if err != nil {
-			log.Fatal(err)
-		}
-		//Restore the SSO handler to previous state before shutdown
-		ssoHandler.RestorePreviousRunningState()
-	*/
+	//Create authentication providers
+	autheliaRouter = authelia.NewAutheliaRouter(&authelia.AutheliaRouterOptions{
+		UseHTTPS:    false, // Automatic populate in router initiation
+		AutheliaURL: "",    // Automatic populate in router initiation
+		Logger:      SystemWideLogger,
+		Database:    sysdb,
+	})
 
 	//Create a statistic collector
 	statisticCollector, err = statistic.NewStatisticCollector(statistic.CollectorOption{
@@ -331,6 +324,7 @@ func startupSequence() {
 
 }
 
+/* Finalize Startup Sequence */
 // This sequence start after everything is initialized
 func finalSequence() {
 	//Start ACME renew agent
@@ -338,4 +332,46 @@ func finalSequence() {
 
 	//Inject routing rules
 	registerBuildInRoutingRules()
+}
+
+/* Shutdown Sequence */
+func ShutdownSeq() {
+	SystemWideLogger.Println("Shutting down " + SYSTEM_NAME)
+	SystemWideLogger.Println("Closing Netstats Listener")
+	if netstatBuffers != nil {
+		netstatBuffers.Close()
+	}
+
+	SystemWideLogger.Println("Closing Statistic Collector")
+	if statisticCollector != nil {
+		statisticCollector.Close()
+	}
+
+	if mdnsTickerStop != nil {
+		SystemWideLogger.Println("Stopping mDNS Discoverer (might take a few minutes)")
+		// Stop the mdns service
+		mdnsTickerStop <- true
+	}
+	if mdnsScanner != nil {
+		mdnsScanner.Close()
+	}
+	SystemWideLogger.Println("Shutting down load balancer")
+	if loadBalancer != nil {
+		loadBalancer.Close()
+	}
+	SystemWideLogger.Println("Closing Certificates Auto Renewer")
+	if acmeAutoRenewer != nil {
+		acmeAutoRenewer.Close()
+	}
+	//Remove the tmp folder
+	SystemWideLogger.Println("Cleaning up tmp files")
+	os.RemoveAll("./tmp")
+
+	//Close database
+	SystemWideLogger.Println("Stopping system database")
+	sysdb.Close()
+
+	//Close logger
+	SystemWideLogger.Println("Closing system wide logger")
+	SystemWideLogger.Close()
 }
