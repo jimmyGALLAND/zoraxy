@@ -13,12 +13,7 @@ import (
 	"sync"
 	"time"
 	"net"
-<<<<<<< Updated upstream
-    proxyproto "github.com/c0va23/go-proxyprotocol"
-
 	"imuslab.com/zoraxy/mod/dynamicproxy/captcha"
-=======
->>>>>>> Stashed changes
 	"imuslab.com/zoraxy/mod/dynamicproxy/dpcore"
 	proxyproto "github.com/pires/go-proxyproto"
 )
@@ -96,6 +91,8 @@ func (router *Router) StartProxyService() error {
 		GetCertificate: router.Option.TlsManager.GetCert,
 		MinVersion:     uint16(minVersion),
 	}
+
+	//config := router.Option.TlsManager.ServerTLSConfig
 
 	//Start rate limitor
 	err := router.startRateLimterCounterResetTicker()
@@ -283,6 +280,7 @@ func (router *Router) StartProxyService() error {
 		//Start the TLS server
 		router.Option.Logger.PrintAndLog("dprouter", "Reverse proxy service started in the background (TLS mode)", nil)
 		go func() {
+
 			router.Option.Logger.PrintAndLog("dprouter", "Reverse proxy service started in the background (TLS mode)", nil)
 
 			ln, err := net.Listen("tcp", ":"+strconv.Itoa(router.Option.Port))
@@ -302,6 +300,7 @@ func (router *Router) StartProxyService() error {
 			if err := router.server.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
 				router.Option.Logger.PrintAndLog("dprouter", "Could not start proxy server", err)
 			}
+			
 		}()
 	} else {
 		//Serve with non TLS mode
