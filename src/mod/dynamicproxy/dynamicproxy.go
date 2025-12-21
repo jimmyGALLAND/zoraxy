@@ -13,10 +13,14 @@ import (
 	"sync"
 	"time"
 	"net"
+<<<<<<< Updated upstream
     proxyproto "github.com/c0va23/go-proxyprotocol"
 
 	"imuslab.com/zoraxy/mod/dynamicproxy/captcha"
+=======
+>>>>>>> Stashed changes
 	"imuslab.com/zoraxy/mod/dynamicproxy/dpcore"
+	proxyproto "github.com/pires/go-proxyproto"
 )
 
 /*
@@ -105,6 +109,7 @@ func (router *Router) StartProxyService() error {
 			Handler:   router.mux,
 			TLSConfig: config,
 		}
+
 		router.Running = true
 
 		if router.Option.Port != 80 && router.Option.ListenOnPort80 {
@@ -278,18 +283,53 @@ func (router *Router) StartProxyService() error {
 		//Start the TLS server
 		router.Option.Logger.PrintAndLog("dprouter", "Reverse proxy service started in the background (TLS mode)", nil)
 		go func() {
-			if err := router.server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			router.Option.Logger.PrintAndLog("dprouter", "Reverse proxy service started in the background (TLS mode)", nil)
+
+			ln, err := net.Listen("tcp", ":"+strconv.Itoa(router.Option.Port))
+			if err != nil {
+				router.Option.Logger.PrintAndLog("dprouter", "Could not create TCP listener", err)
+				return
+			}
+
+			//Wrap listener with Proxy Protocol support (v1/v2)
+			ppln := &proxyproto.Listener{Listener: ln}
+
+			//Wrap listener with TLS
+			tlsListener := tls.NewListener(ppln, config)
+			router.tlsListener = tlsListener
+
+			//Serve using wrapped listener
+			if err := router.server.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
 				router.Option.Logger.PrintAndLog("dprouter", "Could not start proxy server", err)
 			}
 		}()
 	} else {
 		//Serve with non TLS mode
 		router.tlsListener = nil
-		router.server = &http.Server{Addr: ":" + strconv.Itoa(router.Option.Port), Handler: router.mux}
+
+		//Create raw TCP listener
+		ln, err := net.Listen("tcp", ":"+strconv.Itoa(router.Option.Port))
+		if err != nil {
+			router.Option.Logger.PrintAndLog("dprouter", "Could not create TCP listener", err)
+			return err
+		}
+
+		//Wrap listener with Proxy Protocol support (v1/v2)
+		ppln := &proxyproto.Listener{Listener: ln}
+
+		//Create HTTP server using mux handler
+		router.server = &http.Server{
+			Handler: router.mux,
+		}
+
 		router.Running = true
 		router.Option.Logger.PrintAndLog("dprouter", "Reverse proxy service started in the background (Plain HTTP mode)", nil)
+
+		//Serve using wrapped listener
 		go func() {
-			router.server.ListenAndServe()
+			if err := router.server.Serve(ppln); err != nil && err != http.ErrServerClosed {
+				router.Option.Logger.PrintAndLog("dprouter", "Could not start proxy server", err)
+			}
 		}()
 	}
 
