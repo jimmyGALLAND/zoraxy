@@ -219,7 +219,9 @@ func (router *Router) StartProxyService() error {
 			// Wrapper Proxy Protocol v1/v2
 			ppListener := &proxyproto.Listener{
 				Listener: ln,
-				Policy:   proxyproto.USE, 
+				Policy: func(upstream net.Addr) (proxyproto.Policy, error) {
+					return proxyproto.USE, nil
+				},
 			}
 			
 			tlsListener := tls.NewListener(ppListener, router.server.TLSConfig)
