@@ -1,12 +1,15 @@
 ---
 name: Build and push Docker image
 
-"on":
+on:
   release:
     types: [released, prereleased]
+  push:
+    branches:
+      - dev
 
 env:
-  DOCKER_ACCOUNT: zoraxydocker
+  DOCKER_ACCOUNT:  ${{ vars.DOCKER_ACCOUNT }}
   DOCKER_REPO: zoraxy
   DOCKER_REPO_TAG_CACHE_NAME: buildcache
   DOCKER_PLATFORMS: linux/amd64,linux/arm64
@@ -21,7 +24,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8  # v6.0.1
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.ref }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130  # v3.7.0
@@ -42,12 +45,15 @@ jobs:
       - name: Create tag list for docker image
         id: tags
         run: |
-          if [ "${{ github.event.release.prerelease }}" = true ]; then
+          if [ "${{ github.event_name }}" = "push" ]; then
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            echo "docker=${{ env.DOCKER_ACCOUNT }}/${{ env.DOCKER_REPO }}:dev,${{ env.DOCKER_ACCOUNT }}/${{ env.DOCKER_REPO }}:dev-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.release.prerelease }}" = true ]; then
             echo "docker=${{ env.DOCKER_ACCOUNT }}/${{ env.DOCKER_REPO }}:${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event.release.tag_name }}" == *"-rc"* ]]; then
             echo "docker=${{ env.DOCKER_ACCOUNT }}/${{ env.DOCKER_REPO }}:${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
           else
-            echo "docker=${{ env.DOCKER_ACCOUNT }}/${{ env.DOCKER_REPO }}:latest, ${{ env.DOCKER_ACCOUNT }}/${{ env.DOCKER_REPO }}:${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            echo "docker=${{ env.DOCKER_ACCOUNT }}/${{ env.DOCKER_REPO }}:latest,${{ env.DOCKER_ACCOUNT }}/${{ env.DOCKER_REPO }}:${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Build and push Docker image
