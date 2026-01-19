@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	proxyproto "github.com/c0va23/go-proxyprotocol"
+	proxyproto "github.com/pires/go-proxyproto"
 
 	"imuslab.com/zoraxy/mod/dynamicproxy/captcha"
 	"imuslab.com/zoraxy/mod/dynamicproxy/dpcore"
@@ -217,9 +217,14 @@ func (router *Router) StartProxyService() error {
 				return
 			}
 			// Wrapper Proxy Protocol v1/v2
-			ppListener := proxyproto.NewDefaultListener(ln)
-
-			if err := router.server.ServeTLS(ppListener, "", ""); err != nil && err != http.ErrServerClosed {
+			ppListener := &proxyproto.Listener{
+				Listener: ln,
+				Policy:   proxyproto.USE, 
+			}
+			
+			tlsListener := tls.NewListener(ppListener, router.server.TLSConfig)
+			
+			if err := router.server.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
 				router.Option.Logger.PrintAndLog("dprouter", "Could not start proxy server", err)
 			}
 
