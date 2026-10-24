@@ -88,7 +88,7 @@
             <table class="ui unstackable basic celled table">
                 <thead>
                 <tr>
-                    <th>Domain</th>
+                    <th>Domains</th>
                     <th>Filename</th>
                     <th>Last Update</th>
                     <th>Expire At</th>
@@ -325,41 +325,75 @@
         
     }
 
-    //List the stored certificates
-    function initManagedDomainCertificateList(){
-        $.get("/api/cert/list?date=true", function(data){
-            if (data.error != undefined){
+    // List the stored certificates
+    function initManagedDomainCertificateList() {
+        $.get("/api/cert/list?date=true", function(data) {
+            if (data.error != undefined) {
                 msgbox(data.error, false, 5000);
-            }else{
+            } else {
                 $("#certifiedDomainList").html("");
-                data.sort((a,b) => {
-                    return a.Domain > b.Domain
+
+                data.sort((a, b) => {
+                    return a.Domain.localeCompare(b.Domain);
                 });
+
                 data.forEach(entry => {
                     let isExpired = entry.RemainingDays <= 0;
 
+                    // Display alternative domains below the primary domain.
+                    let aliasDomains = (entry.AliasDomains || [])
+                        .map(domain =>
+                            `<div>
+                                <a style="cursor: pointer; font-style: italic; color: #70aee8;"
+                                title="Download certificate"
+                                onclick="handleCertDownload('${entry.Filename}');">${domain}</a>
+                            </div>`
+                        )
+                        .join("");
+
                     $("#certifiedDomainList").append(`<tr>
-                        <td><a style="cursor: pointer;" title="Download certificate" onclick="handleCertDownload('${entry.Filename}');">${entry.Domain}</a></td>
+                        <td>
+                            <a style="cursor: pointer;"
+                            title="Download certificate"
+                            onclick="handleCertDownload('${entry.Filename}');">${entry.Domain}</a>
+                            ${aliasDomains}
+                        </td>
                         <td>${entry.Filename}</td>
                         <td>${entry.LastModifiedDate}</td>
-                        <td class="${isExpired?"expired":"valid"} certdate">${entry.ExpireDate} (${!isExpired?entry.RemainingDays+" days left":"Expired"})</td>
-                        <td>${entry.IsFallback?"<i class='green check icon'></i>":""}</td>
-                        <td><i class="${entry.UseDNS?"green check": "red times"} icon"></i></td>
+                        <td class="${isExpired ? "expired" : "valid"} certdate">
+                            ${entry.ExpireDate} (${!isExpired ? entry.RemainingDays + " days left" : "Expired"})
+                        </td>
+                        <td>${entry.IsFallback ? "<i class='green check icon'></i>" : ""}</td>
+                        <td><i class="${entry.UseDNS ? "green check" : "red times"} icon"></i></td>
                         <td>
-                            <button title="Set as Default / Fallback Certificate" class="ui mini basic button ${(entry.IsFallback?"disabled":"")} " onclick="setSelectedCertAsFallbackCertificate('${entry.Filename}');"><i class="ui blue home icon"></i> Set Fallback</button>
-                            <button title="Renew Certificate" class="ui mini basic icon button renewButton" onclick="renewCertificate('${entry.Domain}', '${entry.Filename}', '${entry.UseDNS}', this);"><i class="ui green refresh icon"></i></button>
-                            <button title="Delete key-pair" class="ui mini basic icon red button" onclick="deleteCertificate('${entry.Filename}');"><i class="ui red trash icon"></i></button>
+                            <button title="Set as Default / Fallback Certificate"
+                                class="ui mini basic button ${entry.IsFallback ? "disabled" : ""}"
+                                onclick="setSelectedCertAsFallbackCertificate('${entry.Filename}');">
+                                <i class="ui blue home icon"></i> Set Fallback
+                            </button>
+                            <button title="Renew Certificate"
+                                class="ui mini basic icon button renewButton"
+                                onclick="renewCertificate('${entry.Domain}', '${entry.Filename}', '${entry.UseDNS}', this);">
+                                <i class="ui green refresh icon"></i>
+                            </button>
+                            <button title="Delete key-pair"
+                                class="ui mini basic icon red button"
+                                onclick="deleteCertificate('${entry.Filename}');">
+                                <i class="ui red trash icon"></i>
+                            </button>
                         </td>
                     </tr>`);
                 });
 
-                if (data.length == 0){
+                if (data.length == 0) {
                     $("#certifiedDomainList").append(`<tr>
-                        <td colspan="4"><i class="ui times red circle icon"></i> No valid keypairs found</td>
+                        <td colspan="7">
+                            <i class="ui times red circle icon"></i> No valid keypairs found
+                        </td>
                     </tr>`);
                 }
             }
-        })
+        });
     }
     initManagedDomainCertificateList();
 
