@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"os"
 )
 
 // makePNG renders a blank PNG of the given size for upload validation tests
@@ -174,4 +175,39 @@ func TestRenderAuthPageDoesNotExpandPlaceholdersFromText(t *testing.T) {
 	if !strings.Contains(page, "&lt;img src=x onerror=alert(1)&gt;") {
 		t.Error("expected the watermark text to be HTML escaped")
 	}
+}
+
+// An auth.html placed in the config folder must replace the embedded template.
+func TestRenderAuthPageUsesOverrideFromConfigFolder(t *testing.T) {
+    dir := t.TempDir()
+    custom := "<html>CUSTOM {{brand_text}}</html>"
+    if err := os.WriteFile(filepath.Join(dir, "auth.html"), []byte(custom), 0644); err != nil {
+        t.Fatal(err)
+    }
+
+    ar := &AuthRouter{
+        Options: &AuthRouterOptions{ConfigFolderPath: dir},
+        branding: &BrandingConfig{
+            BrandText:     "MyBrand",
+            WatermarkText: "WM",
+        },
+    }
+
+    page := string(ar.RenderAuthPage())
+    if !strings.Contains(page, "CUSTOM MyBrand") {
+        t.Errorf("expected the override template to be used, got: %s", page)
+    }
+}
+
+// Without an override file the embedded template must still be served.
+func TestRenderAuthPageFallsBackToEmbedded(t *testing.T) {
+    ar := &AuthRouter{
+        Options:  &AuthRouterOptions{ConfigFolderPath: t.TempDir()},
+        branding: &BrandingConfig{BrandText: "MyBrand", WatermarkText: "WM"},
+    }
+
+    page := string(ar.RenderAuthPage())
+    if strings.Contains(page, "CUSTOM") || !strings.Contains(page, "MyBrand") {
+        t.Error("expected the embedded template to be used when no override exists")
+    }
 }

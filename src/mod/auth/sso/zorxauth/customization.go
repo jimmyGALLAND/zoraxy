@@ -303,6 +303,22 @@ func writeBrandingAsset(w http.ResponseWriter, content []byte, contentType strin
 	w.Write(content)
 }
 
+// loadPageTemplate returns the page template from the config folder 
+// if  placed an override there, otherwise the go:embed default.
+func (ar *AuthRouter) loadPageTemplate(filename string, fallback []byte) []byte {
+	if ar == nil || ar.Options == nil {
+		return fallback
+	}
+	base := ar.Options.ConfigFolderPath
+	if base == "" {
+		base = "./conf/sso/zorxauth"
+	}
+	if data, err := os.ReadFile(filepath.Join(base, filepath.Base(filename))); err == nil && len(data) > 0 {
+		return data
+	}
+	return fallback
+}
+
 // RenderAuthPage fills the branding placeholders of the login page template
 func (ar *AuthRouter) RenderAuthPage() []byte {
 	branding := ar.GetBranding()
@@ -338,7 +354,8 @@ func (ar *AuthRouter) RenderAuthPage() []byte {
 		"{{wallpaper_src}}", BRANDING_ASSET_PATH+ASSET_WALLPAPER+"?v="+revision,
 	)
 
-	return []byte(replacer.Replace(string(authPageHTML)))
+	tpl := ar.loadPageTemplate("auth.html", authPageHTML) // load custom authPage
+	return []byte(replacer.Replace(string(tpl)))
 }
 
 /* ── Webmin API ──────────────────────────────────────────────────────── */
