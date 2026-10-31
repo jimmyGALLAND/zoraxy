@@ -78,6 +78,8 @@ func NewGatewayServer(router *AuthRouter) *GatewayServer {
 		}
 		gs.router.ServeBrandingAsset(w, r, assetKey)
 	})
+	
+	mux.HandleFunc(CUSTOM_ASSET_PATH, gs.router.ServeCustomAsset)
 	mux.HandleFunc("/login", gs.handleLogin)
 	mux.HandleFunc("/logout", gs.handleLogout)
 	mux.HandleFunc("/totp-verify", gs.handleTOTPVerify)

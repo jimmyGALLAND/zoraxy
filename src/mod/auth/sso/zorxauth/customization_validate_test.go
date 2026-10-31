@@ -211,3 +211,141 @@ func TestRenderAuthPageFallsBackToEmbedded(t *testing.T) {
         t.Error("expected the embedded template to be used when no override exists")
     }
 }
+
+func newCustomAssetTestRouter(t *testing.T) (*AuthRouter, string) {
+	t.Helper()
+	base := t.TempDir()
+	custom := filepath.Join(base, CUSTOM_FOLDER)
+
+	files := map[string]string{
+		// Served files
+		filepath.Join(custom, "logo.png"):         "PNGDATA",
+		filepath.Join(custom, "guide.pdf"):        "PDFDATA",
+		filepath.Join(custom, "client.zip"):       "ZIPDATA",
+		filepath.Join(custom, "icon.svg"):         "<svg xmlns='http://www.w3.org/2000/svg'/>",
+		filepath.Join(custom, "sub", "deep.png"):  "DEEPDATA",
+		// Must never be served
+		filepath.Join(custom, "page.html"):        "<script>alert(1)</script>",
+		filepath.Join(custom, "script.js"):        "alert(1)",
+		filepath.Join(custom, ".hidden.png"):      "HIDDEN",
+		filepath.Join(custom, ".git", "config.txt"): "GITCONFIG",
+		filepath.Join(base, "secret.txt"):         "TOPSECRET", // outside the custom folder
+		filepath.Join(base, "branding.json"):      "{}",
+	}
+	for p, content := range files {
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ar := &AuthRouter{Options: &AuthRouterOptions{ConfigFolderPath: base}}
+	return ar, base
+}
+
+func serveCustomAsset(ar *AuthRouter, method, urlPath string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, urlPath, nil)
+	rec := httptest.NewRecorder()
+	ar.ServeCustomAsset(rec, req)
+	return rec
+}
+
+func TestServeCustomAsset(t *testing.T) {
+	ar, _ := newCustomAssetTestRouter(t)
+
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		wantStatus int
+		wantBody   string // checked only when the status is 200
+	}{
+		{"served png", http.MethodGet, "/assets/custom/logo.png", http.StatusOK, "PNGDATA"},
+		{"served pdf", http.MethodGet, "/assets/custom/guide.pdf", http.StatusOK, "PDFDATA"},
+		{"served from sub folder", http.MethodGet, "/assets/custom/sub/deep.png", http.StatusOK, "DEEPDATA"},
+		{"head request allowed", http.MethodHead, "/assets/custom/logo.png", http.StatusOK, ""},
+
+		{"missing file", http.MethodGet, "/assets/custom/nope.png", http.StatusNotFound, ""},
+		{"empty name", http.MethodGet, "/assets/custom/", http.StatusNotFound, ""},
+		{"folder", http.MethodGet, "/assets/custom/sub", http.StatusNotFound, ""},
+
+		{"html refused", http.MethodGet, "/assets/custom/page.html", http.StatusNotFound, ""},
+		{"js refused", http.MethodGet, "/assets/custom/script.js", http.StatusNotFound, ""},
+		{"hidden file", http.MethodGet, "/assets/custom/.hidden.png", http.StatusNotFound, ""},
+		{"hidden folder", http.MethodGet, "/assets/custom/.git/config.txt", http.StatusNotFound, ""},
+
+		{"traversal to parent", http.MethodGet, "/assets/custom/../secret.txt", http.StatusNotFound, ""},
+		{"traversal nested", http.MethodGet, "/assets/custom/sub/../../secret.txt", http.StatusNotFound, ""},
+		{"traversal to branding.json", http.MethodGet, "/assets/custom/../branding.json", http.StatusNotFound, ""},
+		{"traversal encoded", http.MethodGet, "/assets/custom/..%2fsecret.txt", http.StatusNotFound, ""},
+
+		{"post refused", http.MethodPost, "/assets/custom/logo.png", http.StatusMethodNotAllowed, ""},
+		{"delete refused", http.MethodDelete, "/assets/custom/logo.png", http.StatusMethodNotAllowed, ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := serveCustomAsset(ar, tc.method, tc.path)
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("%s %s: got status %d, want %d", tc.method, tc.path, rec.Code, tc.wantStatus)
+			}
+			if tc.wantStatus == http.StatusOK && tc.method == http.MethodGet {
+				if got := rec.Body.String(); got != tc.wantBody {
+					t.Errorf("unexpected body: got %q, want %q", got, tc.wantBody)
+				}
+			}
+			// Whatever the outcome, private content must never leak
+			if strings.Contains(rec.Body.String(), "TOPSECRET") || strings.Contains(rec.Body.String(), "GITCONFIG") {
+				t.Errorf("response for %s leaked private content", tc.path)
+			}
+		})
+	}
+}
+
+func TestServeCustomAssetHeaders(t *testing.T) {
+	ar, _ := newCustomAssetTestRouter(t)
+
+	rec := serveCustomAsset(ar, http.MethodGet, "/assets/custom/logo.png")
+	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("expected nosniff, got %q", got)
+	}
+
+	rec = serveCustomAsset(ar, http.MethodGet, "/assets/custom/icon.svg")
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") {
+		t.Errorf("expected a sandboxing CSP on SVG files, got %q", csp)
+	}
+
+	rec = serveCustomAsset(ar, http.MethodGet, "/assets/custom/client.zip")
+	if got := rec.Header().Get("Content-Disposition"); got != "attachment" {
+		t.Errorf("expected zip files to be forced as downloads, got %q", got)
+	}
+}
+
+// A symlink inside the custom folder must not allow reading files outside of it.
+func TestServeCustomAssetSymlinkEscape(t *testing.T) {
+	ar, base := newCustomAssetTestRouter(t)
+
+	link := filepath.Join(base, CUSTOM_FOLDER, "escape.txt")
+	if err := os.Symlink(filepath.Join(base, "secret.txt"), link); err != nil {
+		t.Skipf("symlinks not supported here: %v", err)
+	}
+
+	rec := serveCustomAsset(ar, http.MethodGet, "/assets/custom/escape.txt")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("symlink escaping the custom folder: got status %d, want 404", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "TOPSECRET") {
+		t.Error("symlink escape leaked the secret file")
+	}
+}
+
+// Without a custom folder, every request must simply be a 404.
+func TestServeCustomAssetNoFolder(t *testing.T) {
+	ar := &AuthRouter{Options: &AuthRouterOptions{ConfigFolderPath: t.TempDir()}}
+	rec := serveCustomAsset(ar, http.MethodGet, "/assets/custom/logo.png")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("got status %d, want 404", rec.Code)
+	}
+}
