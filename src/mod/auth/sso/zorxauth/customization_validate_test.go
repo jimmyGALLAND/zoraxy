@@ -2,6 +2,7 @@ package zorxauth
 
 import (
 	"bytes"
+	"httptest"
 	"image"
 	"image/color"
 	"image/png"
