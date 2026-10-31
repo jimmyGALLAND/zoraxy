@@ -5,10 +5,10 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"os"
 )
 
 // makePNG renders a blank PNG of the given size for upload validation tests
