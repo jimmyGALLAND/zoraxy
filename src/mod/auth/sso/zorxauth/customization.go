@@ -615,7 +615,7 @@ func (ar *AuthRouter) HandleCustomizationReset(w http.ResponseWriter, r *http.Re
 var customAssetTypes = map[string]bool{
 	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true,
 	".svg": true, ".ico": true, ".css": true, ".woff": true, ".woff2": true,
-	".pdf": true, ".txt": true, ".zip": true,
+	".pdf": true, ".txt": true, ".zip": true, ".js": true,
 }
 
 func (ar *AuthRouter) customFolder() string {
@@ -677,5 +677,9 @@ func (ar *AuthRouter) ServeCustomAsset(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Disposition", "attachment")
 		}
 	}
+    if ext == ".js" {
+       w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+    }
+
 	http.ServeFile(w, r, full)
 }

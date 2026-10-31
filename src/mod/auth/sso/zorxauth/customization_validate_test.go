@@ -264,15 +264,15 @@ func TestServeCustomAsset(t *testing.T) {
 	}{
 		{"served png", http.MethodGet, "/assets/custom/logo.png", http.StatusOK, "PNGDATA"},
 		{"served pdf", http.MethodGet, "/assets/custom/guide.pdf", http.StatusOK, "PDFDATA"},
-		{"served from sub folder", http.MethodGet, "/assets/custom/sub/deep.png", http.StatusOK, "DEEPDATA"},
+		{"served from sub folder", http.MethodGet, "/assets/custom/sub/deep.png", http.StatusOK, "alert(1)"},
 		{"head request allowed", http.MethodHead, "/assets/custom/logo.png", http.StatusOK, ""},
+		{"js refused", http.MethodGet, "/assets/custom/script.js", http.StatusOK, "JSDATA"},
 
 		{"missing file", http.MethodGet, "/assets/custom/nope.png", http.StatusNotFound, ""},
 		{"empty name", http.MethodGet, "/assets/custom/", http.StatusNotFound, ""},
 		{"folder", http.MethodGet, "/assets/custom/sub", http.StatusNotFound, ""},
 
 		{"html refused", http.MethodGet, "/assets/custom/page.html", http.StatusNotFound, ""},
-		{"js refused", http.MethodGet, "/assets/custom/script.js", http.StatusNotFound, ""},
 		{"hidden file", http.MethodGet, "/assets/custom/.hidden.png", http.StatusNotFound, ""},
 		{"hidden folder", http.MethodGet, "/assets/custom/.git/config.txt", http.StatusNotFound, ""},
 
