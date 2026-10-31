@@ -261,6 +261,7 @@ func (m *Manager) HandleListCertificate(w http.ResponseWriter, r *http.Request) 
 	if showDate {
 		type CertInfo struct {
 			Domain           string // Domain name of the certificate
+			AliasDomains     []string // Alternatives Domains name of the certificate
 			Filename         string // Filename that stores the certificate
 			LastModifiedDate string
 			ExpireDate       string
@@ -310,16 +311,35 @@ func (m *Manager) HandleListCertificate(w http.ResponseWriter, r *http.Request) 
 			}
 
 			certDomain := ""
+			aliasDomains := []string{}
+
 			block, _ := pem.Decode(certBtyes)
 			if block != nil {
 				cert, err := x509.ParseCertificate(block.Bytes)
 				if err == nil {
+					// Use the Common Name (CN) as the primary domain.
 					certDomain = cert.Subject.CommonName
+
+					// Collect all DNS Subject Alternative Names (SANs).
+					if len(cert.DNSNames) > 0 {
+						// Fall back to the first DNS SAN if the CN is empty.
+						if certDomain == "" {
+							certDomain = cert.DNSNames[0]
+						}
+
+						// Store the remaining DNS SANs as alternative domains.
+						for _, dnsName := range cert.DNSNames {
+							if dnsName != certDomain {
+								aliasDomains = append(aliasDomains, dnsName)
+							}
+						}
+					}
 				}
 			}
 
 			thisCertInfo := CertInfo{
 				Domain:           certDomain,
+				AliasDomains:     aliasDomains,
 				Filename:         filename,
 				LastModifiedDate: modifiedTime,
 				ExpireDate:       certExpireTime,
