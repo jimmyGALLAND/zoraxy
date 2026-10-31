@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"html"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
-
 	"github.com/pquerna/otp/totp"
 	"imuslab.com/zoraxy/mod/netutils"
 )
@@ -271,7 +271,7 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 			// so they can choose to logout and switch to an account that has access.
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
-			w.Write(noAccessHTML)
+			w.Write(gs.router.loadPageTemplate("noaccess.html", noAccessHTML))
 			return
 		}
 	}
@@ -503,7 +503,7 @@ func (gs *GatewayServer) handleNoAccessPage(w http.ResponseWriter, r *http.Reque
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusForbidden)
-	w.Write(noAccessHTML)
+	w.Write(gs.router.loadPageTemplate("noaccess.html", noAccessHTML))
 }
 
 // handleLogout processes logout requests.
@@ -527,7 +527,8 @@ func (gs *GatewayServer) handleLogout(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Replace template placeholder with actual username
-		pageContent := strings.Replace(string(logoutHTML), "{{username}}", username, -1)
+		tpl := gs.router.loadPageTemplate("logout.html", logoutHTML)
+		pageContent := strings.Replace(string(tpl), "{{username}}", html.EscapeString(username), -1)
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
