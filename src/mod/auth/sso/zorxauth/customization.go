@@ -20,8 +20,10 @@ import (
 	"encoding/json"
 	"html"
 	"io"
+	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -53,7 +55,11 @@ const (
 	//Aspect ratio of an uploaded raster image may deviate from the default
 	//resource by at most this ratio before it is rejected.
 	BRANDING_ASPECT_TOLERANCE = 0.02
+
+	// URL prefix used in your custom HTML
+	CUSTOM_ASSET_PATH = "/assets/custom/"
 )
+
 
 // AssetSpec describes the dimensions of a default (go:embed) resource.
 // Uploaded replacements must keep the same width : height ratio.
@@ -606,3 +612,77 @@ func (ar *AuthRouter) HandleCustomizationReset(w http.ResponseWriter, r *http.Re
 	utils.SendOK(w)
 }
 
+// Only these extensions can be served. HTML and JS are deliberately excluded.
+var customAssetTypes = map[string]bool{
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true,
+	".svg": true, ".ico": true, ".css": true, ".woff": true, ".woff2": true,
+	".pdf": true, ".txt": true, ".zip": true, ".js": true,
+}
+
+func (ar *AuthRouter) customFolder() string {
+	base := ar.Options.ConfigFolderPath
+	if base == "" {
+		base = "./conf/sso/zorxauth/custom"
+	}
+	return base
+}
+
+// ServeCustomAsset serves static files placed in the custom folder.
+func (ar *AuthRouter) ServeCustomAsset(w http.ResponseWriter, r *http.Request) {
+	log.Println("custom asset:", r.URL.Path, "-> folder:", ar.customFolder())
+
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rel := path.Clean("/" + strings.TrimPrefix(r.URL.Path, CUSTOM_ASSET_PATH))
+	if rel == "/" {
+		http.NotFound(w, r)
+		return
+	}
+	// Refuse hidden files and folders (.git, .env, ...)
+	for _, part := range strings.Split(rel, "/") {
+		if strings.HasPrefix(part, ".") {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	ext := strings.ToLower(path.Ext(rel))
+	if !customAssetTypes[ext] {
+		http.NotFound(w, r)
+		return
+	}
+
+	folder, err := filepath.EvalSymlinks(ar.customFolder())
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	full, err := filepath.EvalSymlinks(filepath.Join(folder, filepath.FromSlash(rel)))
+	if err != nil || !strings.HasPrefix(full, folder+string(filepath.Separator)) {
+		http.NotFound(w, r)
+		return
+	}
+	if info, err := os.Stat(full); err != nil || info.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	if ext == ".svg" {
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
+	}
+	if ext == ".zip" || ext == ".pdf" {
+		// Let the browser decide for PDF, force download for archives
+		if ext == ".zip" {
+			w.Header().Set("Content-Disposition", "attachment")
+		}
+	}
+    if ext == ".js" {
+       w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+    }
+
+	http.ServeFile(w, r, full)
+}
