@@ -121,3 +121,16 @@ func TestHandleAuthPageFastPathWithoutRememberMe(t *testing.T) {
 		t.Fatalf("did not expect remember_me in session set redirect, got %s", location.String())
 	}
 }
+
+func TestGatewayRoutesCustomAssets(t *testing.T) {
+	ar, _ := newCustomAssetTestRouter(t)
+	gs := NewGatewayServer(ar)
+
+	req := httptest.NewRequest(http.MethodGet, "/assets/custom/logo.png", nil)
+	rec := httptest.NewRecorder()
+	gs.mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("got status %d, want 200", rec.Code)
+	}
+}
