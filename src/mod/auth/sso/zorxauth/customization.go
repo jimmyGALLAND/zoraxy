@@ -622,9 +622,9 @@ var customAssetTypes = map[string]bool{
 func (ar *AuthRouter) customFolder() string {
 	base := ar.Options.ConfigFolderPath
 	if base == "" {
-		base = "./conf/sso/zorxauth/custom"
+		base = "./conf/sso/zorxauth"
 	}
-	return base
+	return filepath.Join(base, "custom")
 }
 
 // ServeCustomAsset serves static files placed in the custom folder.
