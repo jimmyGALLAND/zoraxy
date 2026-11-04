@@ -629,8 +629,9 @@ func (ar *AuthRouter) customFolder() string {
 
 // ServeCustomAsset serves static files placed in the custom folder.
 func (ar *AuthRouter) ServeCustomAsset(w http.ResponseWriter, r *http.Request) {
+  
 	log.Println("custom asset:", r.URL.Path, "-> folder:", ar.customFolder())
-
+  
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
