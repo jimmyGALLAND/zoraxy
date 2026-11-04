@@ -118,7 +118,12 @@ func (gs *GatewayServer) handlePasskeyRegisterBegin(w http.ResponseWriter, r *ht
 		return
 	}
 
-	options, sessionData, err := wa.BeginRegistration(&webAuthnUser{u: u})
+	options, sessionData, err := wa.BeginRegistration(
+		&webAuthnUser{u: u},
+		webauthnlib.WithResidentKeyRequirement(
+			protocol.ResidentKeyRequirementRequired,
+		),
+	)
 	if err != nil {
 		utils.SendErrorResponse(w, "begin registration failed: "+err.Error())
 		return

@@ -2,10 +2,10 @@ package zorxauth
 
 import (
 	"bytes"
-	"httptest"
 	"image"
 	"image/color"
 	"image/png"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
