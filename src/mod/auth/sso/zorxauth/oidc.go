@@ -470,11 +470,15 @@ func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	token := authorization[1]
 	claims, err := p.verifyJWT(token)
-	if err != nil || claims["token_use"] != "access" {
+	if err != nil {
 		writeOIDCError(w, http.StatusUnauthorized, "invalid_token")
 		return
 	}
 	clientID, _ := claims["aud"].(string)
+	if !validOIDCAccessTokenClaims(claims, clientID) {
+		writeOIDCError(w, http.StatusUnauthorized, "invalid_token")
+		return
+	}
 	client, err := p.loadClient(clientID)
 	if err != nil {
 		writeOIDCError(w, http.StatusUnauthorized, "invalid_token")
@@ -565,6 +569,22 @@ func (p *oidcProvider) verifyJWT(token string) (map[string]interface{}, error) {
 }
 
 // validOIDCCodeChallenge validates the base64url-encoded SHA-256 challenge required by PKCE S256.
+func validOIDCAccessTokenClaims(claims map[string]interface{}, expectedClientID string) bool {
+	if claims == nil || expectedClientID == "" {
+		return false
+	}
+	audience, ok := claims["aud"].(string)
+	if !ok || audience == "" || audience != expectedClientID {
+		return false
+	}
+	subject, ok := claims["sub"].(string)
+	if !ok || subject == "" || claims["token_use"] != "access" {
+		return false
+	}
+	scope, ok := claims["scope"].(string)
+	return ok && validOIDCScope(scope)
+}
+
 func validOIDCCodeChallenge(challenge string) bool {
 	if len(challenge) != 43 {
 		return false
