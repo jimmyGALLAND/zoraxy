@@ -99,6 +99,9 @@ func (ar *AuthRouter) handleSessionSetCallback(w http.ResponseWriter, r *http.Re
 		redirectURL = "/" // default to home page if redirect URL is missing
 	}
 
+	ar.sessionLifecycleMutex.Lock()
+	defer ar.sessionLifecycleMutex.Unlock()
+
 	usernameObj, exists := ar.sessionIdStore.LoadAndDelete(sessionID)
 	if !exists {
 		w.Header().Set("Content-Type", "text/html")
@@ -113,6 +116,13 @@ func (ar *AuthRouter) handleSessionSetCallback(w http.ResponseWriter, r *http.Re
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write(invalidHTML)
 		return errors.New("validation session is invalid")
+	}
+
+	if _, err := ar.getUserByUsername(username); err != nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write(invalidHTML)
+		return errors.New("user no longer exists")
 	}
 
 	// Generate long living session cookie for browser with the username and expiry time
