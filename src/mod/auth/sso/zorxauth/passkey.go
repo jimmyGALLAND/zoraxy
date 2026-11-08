@@ -159,7 +159,7 @@ func (gs *GatewayServer) handlePasskeyRegisterComplete(w http.ResponseWriter, r 
 		return
 	}
 
-	pendingObj, ok := gs.router.pendingPasskeyReg.Load(token)
+	pendingObj, ok := gs.router.pendingPasskeyReg.LoadAndDelete(token)
 	if !ok {
 		utils.SendErrorResponse(w, "registration session not found or expired")
 		return
@@ -188,8 +188,6 @@ func (gs *GatewayServer) handlePasskeyRegisterComplete(w http.ResponseWriter, r 
 		return
 	}
 
-	// Consume the registration challenge before verification so it cannot be replayed.
-	gs.router.pendingPasskeyReg.Delete(token)
 	if pending.SessionData == nil {
 		utils.SendErrorResponse(w, "invalid registration session data")
 		return
@@ -389,7 +387,7 @@ func (gs *GatewayServer) handlePasskeyAuthComplete(w http.ResponseWriter, r *htt
 		return
 	}
 
-	pendingObj, ok := gs.router.pendingPasskeyAuth.Load(token)
+	pendingObj, ok := gs.router.pendingPasskeyAuth.LoadAndDelete(token)
 	if !ok {
 		utils.SendErrorResponse(w, "auth session not found or expired")
 		return
@@ -403,6 +401,11 @@ func (gs *GatewayServer) handlePasskeyAuthComplete(w http.ResponseWriter, r *htt
 	if time.Now().After(pending.Expiry) {
 		gs.router.pendingPasskeyAuth.Delete(token)
 		utils.SendErrorResponse(w, "auth session expired")
+		return
+	}
+
+	if pending.SessionData == nil {
+		utils.SendErrorResponse(w, "invalid auth session data")
 		return
 	}
 
