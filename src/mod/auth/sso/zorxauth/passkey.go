@@ -487,6 +487,27 @@ func (gs *GatewayServer) handlePasskeyAuthComplete(w http.ResponseWriter, r *htt
 	}
 	foundUser = updatedUser
 
+	// Serialize final account validation and session issuance with revocation.
+	gs.router.sessionLifecycleMutex.Lock()
+	defer gs.router.sessionLifecycleMutex.Unlock()
+	latestUser, latestErr := gs.router.getUserByUsername(foundUser.Username)
+	if latestErr != nil {
+		utils.SendErrorResponse(w, "user no longer exists")
+		return
+	}
+	credentialStillRegistered := false
+	for _, storedCredential := range latestUser.PasskeyCredentials {
+		if bytes.Equal(storedCredential.ID, credential.ID) {
+			credentialStillRegistered = true
+			break
+		}
+	}
+	if !credentialStillRegistered {
+		utils.SendErrorResponse(w, "passkey is no longer registered")
+		return
+	}
+	foundUser = latestUser
+
 	// Validate host access using the redirect target.
 	redirectTarget := pending.RedirectTarget
 	parsedTarget, parseErr := url.Parse(redirectTarget)
