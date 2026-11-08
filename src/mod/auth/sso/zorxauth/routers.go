@@ -62,35 +62,8 @@ func (ar *AuthRouter) RequestIsAuthenticatedInSSO(w http.ResponseWriter, r *http
 	if time.Now().After(gatewaySession.Expiry) {
 		username := gatewaySession.Username
 
-		// Invalidate pending cross-domain SSO callbacks and OIDC authorization codes.
-		ar.deleteValidationCodesForUser(username)
-		if ar.oidc != nil {
-			ar.oidc.deleteAuthorizationCodesForUser(username)
-		}
-
-		// Delete the expired gateway session
-		ar.gatewaySessionStore.Delete(cookie.Value)
-
-		// Clear all browser sessions (cookieIdStore) for this user
-		// When the SSO portal session expires, all site-specific sessions should also be invalidated
-		ar.cookieIdStore.Range(func(key, value interface{}) bool {
-			sessionID, ok := key.(string)
-			if !ok {
-				return true // continue iteration
-			}
-
-			browserSession, ok := value.(*BrowserSession)
-			if !ok {
-				return true // continue iteration
-			}
-
-			// If this browser session belongs to the expired user, delete it
-			if browserSession.Username == username {
-				ar.cookieIdStore.Delete(sessionID)
-			}
-
-			return true // continue iteration
-		})
+		// Expired central SSO sessions invalidate all related sessions and handoffs.
+		ar.invalidateUserSessions(username)
 
 		return false, ""
 	}
