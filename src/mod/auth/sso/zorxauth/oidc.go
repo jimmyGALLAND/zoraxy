@@ -197,6 +197,8 @@ func (ar *AuthRouter) RegisterOIDCClient(name, proxyDomain string, redirectURIs 
 	if err := ar.Database.Write(oidcClientsTable, client.ID, client); err != nil {
 		return nil, "", err
 	}
+	// Never return the stored verifier hash to the management API caller.
+	client.SecretHash = ""
 	return client, secret, nil
 }
 
@@ -220,6 +222,8 @@ func (ar *AuthRouter) GetOIDCClients() ([]*OIDCClient, error) {
 }
 
 func (ar *AuthRouter) DeleteOIDCClient(clientID string) error {
+	ar.oidcClientMutex.Lock()
+	defer ar.oidcClientMutex.Unlock()
 	if !ar.Database.KeyExists(oidcClientsTable, clientID) {
 		return errors.New("OIDC client not found")
 	}
