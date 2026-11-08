@@ -115,6 +115,18 @@ func (ar *AuthRouter) initOIDCProvider() error {
 	return nil
 }
 
+// isOIDCAuthorizeRedirect recognizes authorization requests that return to this SSO issuer.
+func (ar *AuthRouter) isOIDCAuthorizeRedirect(rawURL string) bool {
+	issuer, issuerErr := url.Parse(ar.OIDCIssuer())
+	target, targetErr := url.Parse(rawURL)
+	if issuerErr != nil || targetErr != nil || issuer.Host == "" || target.Host == "" {
+		return false
+	}
+	return strings.EqualFold(issuer.Scheme, target.Scheme) &&
+		strings.EqualFold(issuer.Host, target.Host) &&
+		target.EscapedPath() == "/oidc/authorize"
+}
+
 func (ar *AuthRouter) OIDCIssuer() string {
 	var issuer string
 	if ar.Database != nil && ar.Database.KeyExists(DB_NAME, oidcIssuerOption) {
@@ -262,12 +274,14 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "user session is invalid", http.StatusUnauthorized)
 		return
 	}
+	// getUserByUsername supplies an ID for legacy records in memory; persist it
+	// before using it as the stable OIDC subject.
 	if user.ID == "" {
 		user.ID = uuid.NewString()
-		if err := p.router.saveUser(user, user.Username); err != nil {
-			http.Error(w, "unable to persist user subject", http.StatusInternalServerError)
-			return
-		}
+	}
+	if err := p.router.saveUser(user, user.Username); err != nil {
+		http.Error(w, "unable to persist user subject", http.StatusInternalServerError)
+		return
 	}
 	if client.ProxyDomain != "" && !p.router.ValidateUserAccessToHost(username, client.ProxyDomain) {
 		http.Error(w, "access denied", http.StatusForbidden)
