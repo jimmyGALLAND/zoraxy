@@ -596,7 +596,8 @@ func (gs *GatewayServer) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Invalidate pending OIDC authorization codes for this user on logout.
+	// Invalidate pending cross-domain SSO callbacks and OIDC authorization codes on logout.
+	gs.router.deleteValidationCodesForUser(username)
 	if gs.router.oidc != nil {
 		gs.router.oidc.deleteAuthorizationCodesForUser(username)
 	}
