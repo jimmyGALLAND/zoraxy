@@ -323,11 +323,8 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "user session is invalid", http.StatusUnauthorized)
 		return
 	}
-	// getUserByUsername supplies an ID for legacy records in memory; persist it
-	// before using it as the stable OIDC subject.
-	if user.ID == "" {
-		user.ID = uuid.NewString()
-	}
+	// Persist the user record before issuing a token so legacy records receive
+	// a stable subject ID that can be resolved by the UserInfo endpoint.
 	if err := p.router.saveUser(user, user.Username); err != nil {
 		http.Error(w, "unable to persist user subject", http.StatusInternalServerError)
 		return
