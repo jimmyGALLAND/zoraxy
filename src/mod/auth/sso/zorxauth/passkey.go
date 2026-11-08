@@ -449,7 +449,15 @@ func (gs *GatewayServer) handlePasskeyAuthComplete(w http.ResponseWriter, r *htt
 			break
 		}
 	}
-	_ = gs.router.saveUser(foundUser, foundUser.Username)
+	if err := gs.router.saveUser(foundUser, foundUser.Username); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Failed to persist passkey authentication state",
+		})
+		return
+	}
 
 	// Validate host access using the redirect target.
 	redirectTarget := pending.RedirectTarget
