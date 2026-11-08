@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
