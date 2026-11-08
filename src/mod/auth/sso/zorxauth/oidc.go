@@ -384,6 +384,30 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unable to persist user subject", http.StatusInternalServerError)
 		return
 	}
+	// Serialize authorization-code issuance with account-wide session revocation.
+	p.router.sessionLifecycleMutex.Lock()
+	defer p.router.sessionLifecycleMutex.Unlock()
+	cookie, cookieErr := r.Cookie(p.router.Options.CookieName)
+	if cookieErr != nil || cookie.Value == "" {
+		http.Error(w, "authentication session is no longer active", http.StatusUnauthorized)
+		return
+	}
+	sessionData, sessionExists := p.router.gatewaySessionStore.Load(cookie.Value)
+	gatewaySession, sessionOK := sessionData.(*GatewaySession)
+	if !sessionExists || !sessionOK || gatewaySession == nil ||
+		!strings.EqualFold(gatewaySession.Username, username) || !time.Now().Before(gatewaySession.Expiry) {
+		http.Error(w, "authentication session is no longer active", http.StatusUnauthorized)
+		return
+	}
+	if _, userErr := p.router.getUserByUsername(username); userErr != nil {
+		http.Error(w, "user no longer exists", http.StatusUnauthorized)
+		return
+	}
+	if client.ProxyDomain != "" && !p.router.ValidateUserAccessToHost(username, client.ProxyDomain) {
+		http.Error(w, "access denied", http.StatusForbidden)
+		return
+	}
+
 	codeBytes := make([]byte, 32)
 	if _, err := rand.Read(codeBytes); err != nil {
 		http.Error(w, "unable to create authorization code", http.StatusInternalServerError)
@@ -463,6 +487,9 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 		writeOIDCError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
+	// Keep code redemption and token issuance atomic with respect to logout and account revocation.
+	p.router.sessionLifecycleMutex.Lock()
+	defer p.router.sessionLifecycleMutex.Unlock()
 	code, err := p.consumeAuthorizationCode(
 		authorizationCode,
 		client.ID,
