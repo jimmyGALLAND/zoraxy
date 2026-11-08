@@ -145,10 +145,42 @@ func (ar *AuthRouter) RegisterOIDCClient(name, proxyDomain string, redirectURIs 
 	if name == "" || len(redirectURIs) == 0 {
 		return nil, "", errors.New("client name and at least one redirect URI are required")
 	}
+	normalizedRedirectURIs := make([]string, 0, len(redirectURIs))
+	seenRedirectURIs := make(map[string]struct{}, len(redirectURIs))
 	for _, rawURI := range redirectURIs {
+		rawURI = strings.TrimSpace(rawURI)
 		parsed, err := url.Parse(rawURI)
-		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.Fragment != "" {
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
 			return nil, "", fmt.Errorf("invalid redirect URI: %s", rawURI)
+		}
+		if _, exists := seenRedirectURIs[rawURI]; exists {
+			continue
+		}
+		seenRedirectURIs[rawURI] = struct{}{}
+		normalizedRedirectURIs = append(normalizedRedirectURIs, rawURI)
+	}
+	if len(normalizedRedirectURIs) == 0 {
+		return nil, "", errors.New("at least one valid redirect URI is required")
+	}
+	proxyDomain = strings.ToLower(strings.TrimSpace(proxyDomain))
+	ar.oidcClientMutex.Lock()
+	defer ar.oidcClientMutex.Unlock()
+	if proxyDomain != "" {
+		entries, err := ar.Database.ListTable(oidcClientsTable)
+		if err != nil {
+			return nil, "", err
+		}
+		for _, entry := range entries {
+			if len(entry) == 0 {
+				continue
+			}
+			existing := &OIDCClient{}
+			if err := ar.Database.Read(oidcClientsTable, string(entry[0]), existing); err != nil {
+				continue
+			}
+			if strings.EqualFold(existing.ProxyDomain, proxyDomain) {
+				return nil, "", fmt.Errorf("reverse proxy %s already has an OIDC client", proxyDomain)
+			}
 		}
 	}
 	secretBytes := make([]byte, 32)
@@ -160,7 +192,7 @@ func (ar *AuthRouter) RegisterOIDCClient(name, proxyDomain string, redirectURIs 
 	client := &OIDCClient{
 		ID: uuid.NewString(), SecretHash: base64.RawURLEncoding.EncodeToString(secretHash[:]),
 		Name: name, ProxyDomain: strings.TrimSpace(proxyDomain),
-		RedirectURIs: append([]string(nil), redirectURIs...), CreatedAt: time.Now().UTC(),
+		RedirectURIs: normalizedRedirectURIs, CreatedAt: time.Now().UTC(),
 	}
 	if err := ar.Database.Write(oidcClientsTable, client.ID, client); err != nil {
 		return nil, "", err
