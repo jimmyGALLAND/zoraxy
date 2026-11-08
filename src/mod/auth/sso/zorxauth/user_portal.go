@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"image/png"
 	"net/http"
 	"strings"
@@ -123,19 +124,14 @@ func (gs *GatewayServer) handleChangePassword(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if !gs.router.ValidateUsername(username, currentPassword) {
-		utils.SendErrorResponse(w, "current password is incorrect")
-		return
-	}
-
-	u, err := gs.router.getUserByUsername(username)
+	u, err := gs.router.updateUser(username, func(user *User) error {
+		if user.PasswordHash == "" || user.PasswordHash != hashPassword(currentPassword) {
+			return errors.New("current password is incorrect")
+		}
+		user.PasswordHash = hashPassword(newPassword)
+		return nil
+	})
 	if err != nil {
-		utils.SendErrorResponse(w, "user not found")
-		return
-	}
-
-	u.PasswordHash = hashPassword(newPassword)
-	if err := gs.router.saveUser(u, u.Username); err != nil {
 		utils.SendErrorResponse(w, "failed to save new password: "+err.Error())
 		return
 	}
@@ -229,20 +225,20 @@ func (gs *GatewayServer) handleEnableTOTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	u, err := gs.router.getUserByUsername(username)
+	_, err = gs.router.updateUser(username, func(user *User) error {
+		if user.Enable2FA {
+			return errors.New("2FA is already enabled")
+		}
+		user.TOTPSecret = pending.Secret
+		user.Enable2FA = true
+		return nil
+	})
 	if err != nil {
-		utils.SendErrorResponse(w, "user not found")
-		return
-	}
-
-	u.TOTPSecret = pending.Secret
-	u.Enable2FA = true
-	if err := gs.router.saveUser(u, u.Username); err != nil {
 		utils.SendErrorResponse(w, "failed to enable 2FA: "+err.Error())
 		return
 	}
 
-	gs.router.pendingTOTPSetup.Delete(username)
+	gs.router.pendingTOTPSetup.CompareAndDelete(username, pending)
 	utils.SendOK(w)
 }
 
@@ -259,25 +255,18 @@ func (gs *GatewayServer) handleDisableTOTP(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	u, err := gs.router.getUserByUsername(username)
+	_, err = gs.router.updateUser(username, func(user *User) error {
+		if !user.Enable2FA {
+			return errors.New("2FA is not currently enabled")
+		}
+		if !totp.Validate(code, user.TOTPSecret) {
+			return errors.New("invalid TOTP code")
+		}
+		user.Enable2FA = false
+		user.TOTPSecret = ""
+		return nil
+	})
 	if err != nil {
-		utils.SendErrorResponse(w, "user not found")
-		return
-	}
-
-	if !u.Enable2FA {
-		utils.SendErrorResponse(w, "2FA is not currently enabled")
-		return
-	}
-
-	if !totp.Validate(code, u.TOTPSecret) {
-		utils.SendErrorResponse(w, "invalid TOTP code")
-		return
-	}
-
-	u.Enable2FA = false
-	u.TOTPSecret = ""
-	if err := gs.router.saveUser(u, u.Username); err != nil {
 		utils.SendErrorResponse(w, "failed to disable 2FA: "+err.Error())
 		return
 	}
