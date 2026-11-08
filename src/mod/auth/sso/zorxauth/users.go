@@ -467,9 +467,11 @@ func (ar *AuthRouter) HandleUserDelete(w http.ResponseWriter, r *http.Request) {
 		utils.SendErrorResponse(w, "failed to delete user")
 		return
 	}
+	// Keep account creation and mutation blocked until the deleted account's
+	// sessions and pending authentication flows have also been invalidated.
+	ar.invalidateUserSessions(user.Username)
 	ar.userMutationMutex.Unlock()
 
-	ar.invalidateUserSessions(user.Username)
 	utils.SendOK(w)
 }
 
