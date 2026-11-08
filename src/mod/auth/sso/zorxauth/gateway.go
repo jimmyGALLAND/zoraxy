@@ -236,6 +236,13 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 
+		// OIDC authorization is hosted by the SSO portal itself. Its protected
+		// resource authorization is checked later against the client's associated proxy.
+		if gs.router.isOIDCAuthorizeRedirect(redirectURL) {
+			http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+			return
+		}
+
 		if gs.router.ValidateUserAccessToHost(username, host) {
 			// Renew the gateway session expiry time since the user is actively using it
 			rememberMe := false
@@ -402,7 +409,10 @@ func (gs *GatewayServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !gs.router.ValidateUserAccessToHost(u.Username, host) {
+	// An OIDC authorization request returns to the SSO portal, not to the
+	// protected application. The application permission is checked by the provider.
+	isOIDCFlow := gs.router.isOIDCAuthorizeRedirect(redirectTarget)
+	if !isOIDCFlow && !gs.router.ValidateUserAccessToHost(u.Username, host) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -491,6 +501,18 @@ func (gs *GatewayServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":        true,
 			"redirectTarget": "/user",
+		})
+		return
+	}
+
+	// The gateway cookie is already set on the SSO origin. Do not issue a
+	// cross-domain ZorxAuth session callback for an OIDC authorization request.
+	if isOIDCFlow {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":        true,
+			"redirectTarget": redirectTarget,
 		})
 		return
 	}
@@ -745,6 +767,16 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":        true,
 			"redirectTarget": "/user",
+		})
+		return
+	}
+
+	if gs.router.isOIDCAuthorizeRedirect(pending.RedirectTarget) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":        true,
+			"redirectTarget": pending.RedirectTarget,
 		})
 		return
 	}
