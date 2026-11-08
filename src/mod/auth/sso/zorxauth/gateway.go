@@ -596,6 +596,11 @@ func (gs *GatewayServer) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Invalidate pending OIDC authorization codes for this user on logout.
+	if gs.router.oidc != nil {
+		gs.router.oidc.deleteAuthorizationCodesForUser(username)
+	}
+
 	// Get the session cookie for the current browser
 	cookie, err := r.Cookie(gs.router.Options.CookieName)
 	if err == nil && cookie.Value != "" {
