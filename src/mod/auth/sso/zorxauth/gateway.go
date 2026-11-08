@@ -671,7 +671,7 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 	}
 
 	pending, ok := pendingObj.(*PendingTOTPSession)
-	if !ok || time.Now().After(pending.Expiry) {
+	if !ok || pending == nil || time.Now().After(pending.Expiry) {
 		gs.router.pendingTOTPSessions.Delete(totpToken)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
