@@ -348,6 +348,7 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	originalUsername := user.Username
+	credentialsChanged := false
 	newUsername := strings.TrimSpace(r.FormValue("newUsername"))
 	if newUsername != "" {
 		if !strings.EqualFold(newUsername, originalUsername) {
@@ -356,7 +357,9 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		user.Username = newUsername
+			user.Username = newUsername
+			credentialsChanged = true
+		}
 	}
 
 	if _, ok := r.Form["email"]; ok {
@@ -372,6 +375,7 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 
 	if password := strings.TrimSpace(r.FormValue("password")); password != "" {
 		user.PasswordHash = hashPassword(password)
+		credentialsChanged = true
 	}
 
 	if _, ok := r.Form["allowedHosts"]; ok {
@@ -399,6 +403,10 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 	if err := ar.saveUser(user, originalUsername); err != nil {
 		utils.SendErrorResponse(w, err.Error())
 		return
+	}
+
+	if credentialsChanged {
+		ar.invalidateUserSessions(originalUsername)
 	}
 
 	utils.SendOK(w)
