@@ -250,3 +250,36 @@ func TestOIDCAuthorizationCodeCannotBeReused(t *testing.T) {
 		t.Fatal("expected replayed authorization code to be rejected")
 	}
 }
+
+
+func TestValidOIDCAccessTokenClaims(t *testing.T) {
+	valid := map[string]interface{}{
+		"aud": "client-1",
+		"sub": "user-123",
+		"token_use": "access",
+		"scope": "openid profile",
+	}
+	tests := []struct {
+		name   string
+		claims map[string]interface{}
+		client string
+		want   bool
+	}{
+		{"valid access token", valid, "client-1", true},
+		{"wrong audience", valid, "client-2", false},
+		{"missing expected audience", valid, "", false},
+		{"missing subject", map[string]interface{}{"aud": "client-1", "token_use": "access", "scope": "openid"}, "client-1", false},
+		{"wrong token use", map[string]interface{}{"aud": "client-1", "sub": "user-123", "token_use": "id", "scope": "openid"}, "client-1", false},
+		{"missing openid scope", map[string]interface{}{"aud": "client-1", "sub": "user-123", "token_use": "access", "scope": "profile"}, "client-1", false},
+		{"unsupported scope", map[string]interface{}{"aud": "client-1", "sub": "user-123", "token_use": "access", "scope": "openid admin"}, "client-1", false},
+		{"non-string audience", map[string]interface{}{"aud": []string{"client-1"}, "sub": "user-123", "token_use": "access", "scope": "openid"}, "client-1", false},
+		{"nil claims", nil, "client-1", false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := validOIDCAccessTokenClaims(test.claims, test.client); got != test.want {
+				t.Fatalf("validOIDCAccessTokenClaims() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
