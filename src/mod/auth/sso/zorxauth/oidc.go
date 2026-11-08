@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"math/big"
+	"crypto/subtle"
 	"sync"
 	"time"
 
@@ -30,7 +32,7 @@ const (
 
 type OIDCClient struct {
 	ID           string   `json:"client_id"`
-	SecretHash   string   `json:"-"`
+	SecretHash   string   `json:"secret_hash"`
 	Name         string   `json:"name"`
 	ProxyDomain  string   `json:"proxy_domain,omitempty"`
 	RedirectURIs []string `json:"redirect_uris"`
@@ -214,7 +216,7 @@ func (p *oidcProvider) handleJWKS(w http.ResponseWriter, r *http.Request) {
 	writeOIDCJSON(w, http.StatusOK, map[string]interface{}{"keys": []interface{}{map[string]interface{}{
 		"kty": "RSA", "use": "sig", "alg": "RS256", "kid": p.key.KeyID,
 		"n": base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
-		"e": base64.RawURLEncoding.EncodeToString([]byte{byte(pub.E >> 16), byte(pub.E >> 8), byte(pub.E)}[1:]),
+		"e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()),
 	}}})
 }
 
@@ -259,6 +261,13 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "user session is invalid", http.StatusUnauthorized)
 		return
+	}
+	if user.ID == "" {
+		user.ID = uuid.NewString()
+		if err := p.router.saveUser(user, user.Username); err != nil {
+			http.Error(w, "unable to persist user subject", http.StatusInternalServerError)
+			return
+		}
 	}
 	if client.ProxyDomain != "" && !p.router.ValidateUserAccessToHost(username, client.ProxyDomain) {
 		http.Error(w, "access denied", http.StatusForbidden)
@@ -451,18 +460,7 @@ func verifyOIDCClientSecret(client *OIDCClient, secret string) bool {
 		return false
 	}
 	hash := sha256.Sum256([]byte(secret))
-	return subtleConstantTimeEqual([]byte(client.SecretHash), []byte(base64.RawURLEncoding.EncodeToString(hash[:])))
-}
-
-func subtleConstantTimeEqual(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	var result byte
-	for i := range a {
-		result |= a[i] ^ b[i]
-	}
-	return result == 0
+	return subtle.ConstantTimeCompare([]byte(client.SecretHash), []byte(base64.RawURLEncoding.EncodeToString(hash[:]))) == 1
 }
 
 func stableOIDCSubject(user *User) string {
