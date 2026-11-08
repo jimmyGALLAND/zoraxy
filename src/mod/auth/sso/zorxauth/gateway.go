@@ -596,39 +596,8 @@ func (gs *GatewayServer) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Invalidate pending cross-domain SSO callbacks and OIDC authorization codes on logout.
-	gs.router.deleteValidationCodesForUser(username)
-	if gs.router.oidc != nil {
-		gs.router.oidc.deleteAuthorizationCodesForUser(username)
-	}
-
-	// Get the session cookie for the current browser
-	cookie, err := r.Cookie(gs.router.Options.CookieName)
-	if err == nil && cookie.Value != "" {
-		// Remove from gateway session store
-		gs.router.gatewaySessionStore.Delete(cookie.Value)
-	}
-
-	// Iterate through all browser sessions and remove all sessions for this username
-	// This ensures the user is logged out from ALL devices/browsers
-	gs.router.cookieIdStore.Range(func(key, value interface{}) bool {
-		sessionID, ok := key.(string)
-		if !ok {
-			return true // continue iteration
-		}
-
-		browserSession, ok := value.(*BrowserSession)
-		if !ok {
-			return true // continue iteration
-		}
-
-		// If this session belongs to the current user, delete it
-		if browserSession.Username == username {
-			gs.router.cookieIdStore.Delete(sessionID)
-		}
-
-		return true // continue iteration
-	})
+	// Invalidate every active session and pending authentication handoff for this user.
+	gs.router.invalidateUserSessions(username)
 
 	// Expire the cookie in the current browser
 	isSecure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
