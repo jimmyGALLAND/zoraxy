@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"mime"
 	"strings"
 	"math/big"
 	"crypto/subtle"
@@ -360,24 +361,37 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	mediaType, _, mediaTypeErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if mediaTypeErr != nil || mediaType != "application/x-www-form-urlencoded" {
+		writeOIDCError(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := r.ParseForm(); err != nil {
 		writeOIDCError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	clientID, secret, ok := r.BasicAuth()
-	if !ok {
-		clientID, secret = r.Form.Get("client_id"), r.Form.Get("client_secret")
+	clientID, secret, hasBasicAuth := r.BasicAuth()
+	if r.Header.Get("Authorization") != "" && !hasBasicAuth {
+		writeOIDCError(w, http.StatusUnauthorized, "invalid_client")
+		return
+	}
+	if !hasBasicAuth {
+		clientID, secret = r.PostForm.Get("client_id"), r.PostForm.Get("client_secret")
+	} else if r.PostForm.Get("client_id") != "" || r.PostForm.Get("client_secret") != "" {
+		writeOIDCError(w, http.StatusBadRequest, "invalid_request")
+		return
 	}
 	client, err := p.loadClient(clientID)
 	if err != nil || !verifyOIDCClientSecret(client, secret) {
 		writeOIDCError(w, http.StatusUnauthorized, "invalid_client")
 		return
 	}
-	if r.Form.Get("grant_type") != "authorization_code" {
+	if r.PostForm.Get("grant_type") != "authorization_code" {
 		writeOIDCError(w, http.StatusBadRequest, "unsupported_grant_type")
 		return
 	}
-	codeValue := r.Form.Get("code")
+	codeValue := r.PostForm.Get("code")
 	value, exists := p.codes.LoadAndDelete(codeValue)
 	if !exists {
 		writeOIDCError(w, http.StatusBadRequest, "invalid_grant")
@@ -386,7 +400,7 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 	code := value.(*oidcAuthorizationCode)
 	verifier := r.Form.Get("code_verifier")
 	if time.Now().After(code.ExpiresAt) || code.ClientID != client.ID ||
-		code.RedirectURI != r.Form.Get("redirect_uri") || !validOIDCCodeVerifier(verifier) {
+		code.RedirectURI != r.PostForm.Get("redirect_uri") || !validOIDCCodeVerifier(verifier) {
 		writeOIDCError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
@@ -397,7 +411,7 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := p.router.getUserByUsername(code.Username)
-	if err != nil {
+	if err != nil || (client.ProxyDomain != "" && !p.router.ValidateUserAccessToHost(user.Username, client.ProxyDomain)) {
 		writeOIDCError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
@@ -434,7 +448,12 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
-	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	authorization := strings.Fields(r.Header.Get("Authorization"))
+	if len(authorization) != 2 || !strings.EqualFold(authorization[0], "Bearer") {
+		writeOIDCError(w, http.StatusUnauthorized, "invalid_token")
+		return
+	}
+	token := authorization[1]
 	claims, err := p.verifyJWT(token)
 	if err != nil || claims["token_use"] != "access" {
 		writeOIDCError(w, http.StatusUnauthorized, "invalid_token")
@@ -446,7 +465,10 @@ func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 		writeOIDCError(w, http.StatusUnauthorized, "invalid_token")
 		return
 	}
-	_ = client
+	if client == nil {
+		writeOIDCError(w, http.StatusUnauthorized, "invalid_token")
+		return
+	}
 	sub, _ := claims["sub"].(string)
 	user, err := p.router.getUserByID(sub)
 	if err != nil {
@@ -509,9 +531,11 @@ func (p *oidcProvider) verifyJWT(token string) (map[string]interface{}, error) {
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return nil, err
 	}
-	exp, ok := claims["exp"].(float64)
-	if !ok || time.Now().Unix() >= int64(exp) {
-		return nil, errors.New("expired JWT")
+	now := time.Now().Unix()
+	exp, expOK := claims["exp"].(float64)
+	iat, iatOK := claims["iat"].(float64)
+	if !expOK || !iatOK || exp <= iat || now >= int64(exp) || int64(iat) > now+60 {
+		return nil, errors.New("invalid JWT lifetime")
 	}
 	if claims["iss"] != p.router.OIDCIssuer() {
 		return nil, errors.New("invalid JWT issuer")
