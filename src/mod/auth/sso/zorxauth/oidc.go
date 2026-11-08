@@ -257,6 +257,16 @@ func (p *oidcProvider) deleteAuthorizationCodesForClient(clientID string) {
 	})
 }
 
+func (p *oidcProvider) deleteAuthorizationCodesForUser(username string) {
+	p.codes.Range(func(key, value interface{}) bool {
+		code, ok := value.(*oidcAuthorizationCode)
+		if ok && code != nil && code.Username == username {
+			p.codes.Delete(key)
+		}
+		return true
+	})
+}
+
 func (p *oidcProvider) loadClient(clientID string) (*OIDCClient, error) {
 	client := &OIDCClient{}
 	if !p.router.Database.KeyExists(oidcClientsTable, clientID) {
