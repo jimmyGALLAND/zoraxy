@@ -1,10 +1,13 @@
 package zorxauth
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidOIDCCodeVerifier(t *testing.T) {
@@ -79,6 +82,93 @@ func TestValidOIDCScope(t *testing.T) {
 		t.Run(test.scope, func(t *testing.T) {
 			if got := validOIDCScope(test.scope); got != test.want {
 				t.Fatalf("validOIDCScope(%q) = %v, want %v", test.scope, got, test.want)
+			}
+		})
+	}
+}
+
+
+func TestVerifyOIDCClientSecret(t *testing.T) {
+	secret := "a-long-random-client-secret"
+	hash := sha256.Sum256([]byte(secret))
+	client := &OIDCClient{
+		SecretHash: base64.RawURLEncoding.EncodeToString(hash[:]),
+	}
+	if !verifyOIDCClientSecret(client, secret) {
+		t.Fatal("expected the registered client secret to be accepted")
+	}
+	if verifyOIDCClientSecret(client, "wrong-secret") {
+		t.Fatal("expected an incorrect client secret to be rejected")
+	}
+	if verifyOIDCClientSecret(client, "") {
+		t.Fatal("expected an empty client secret to be rejected")
+	}
+	if verifyOIDCClientSecret(nil, secret) {
+		t.Fatal("expected a nil client to be rejected")
+	}
+}
+
+func TestVerifyOIDCJWTClaims(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate signing key: %v", err)
+	}
+	router := &AuthRouter{Options: &AuthRouterOptions{
+		SSORedirectURL: "https://auth.example.test",
+	}}
+	publicDER, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	fingerprint := sha256.Sum256(publicDER)
+	provider := &oidcProvider{
+		router: router,
+		key: &oidcSigningMaterial{
+			PrivateKey: privateKey,
+			KeyID:      base64.RawURLEncoding.EncodeToString(fingerprint[:]),
+		},
+	}
+	now := time.Now()
+	tests := []struct {
+		name   string
+		claims map[string]interface{}
+		wantOK bool
+	}{
+		{
+			name: "valid issuer and lifetime",
+			claims: map[string]interface{}{
+				"iss": router.OIDCIssuer(), "iat": now.Unix(), "exp": now.Add(time.Minute).Unix(),
+			},
+			wantOK: true,
+		},
+		{
+			name: "expired token",
+			claims: map[string]interface{}{
+				"iss": router.OIDCIssuer(), "iat": now.Add(-2 * time.Minute).Unix(), "exp": now.Add(-time.Minute).Unix(),
+			},
+		},
+		{
+			name: "future issued token",
+			claims: map[string]interface{}{
+				"iss": router.OIDCIssuer(), "iat": now.Add(2 * time.Minute).Unix(), "exp": now.Add(3 * time.Minute).Unix(),
+			},
+		},
+		{
+			name: "wrong issuer",
+			claims: map[string]interface{}{
+				"iss": "https://attacker.example.test", "iat": now.Unix(), "exp": now.Add(time.Minute).Unix(),
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			token, err := provider.signJWT(test.claims)
+			if err != nil {
+				t.Fatalf("sign JWT: %v", err)
+			}
+			_, err = provider.verifyJWT(token)
+			if gotOK := err == nil; gotOK != test.wantOK {
+				t.Fatalf("verifyJWT() error = %v, want success = %v", err, test.wantOK)
 			}
 		})
 	}
