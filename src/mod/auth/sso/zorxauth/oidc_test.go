@@ -6,10 +6,34 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestSingleOIDCFormValue(t *testing.T) {
+	tests := []struct {
+		name   string
+		values url.Values
+		key    string
+		want   string
+		wantOK bool
+	}{
+		{name: "single value", values: url.Values{"code": {"authorization-code"}}, key: "code", want: "authorization-code", wantOK: true},
+		{name: "missing value", values: url.Values{}, key: "code"},
+		{name: "empty value", values: url.Values{"code": {""}}, key: "code"},
+		{name: "duplicate values", values: url.Values{"code": {"first", "second"}}, key: "code"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := singleOIDCFormValue(test.values, test.key)
+				if got != test.want || ok != test.wantOK {
+				t.Fatalf("singleOIDCFormValue() = (%q, %v), want (%q, %v)", got, ok, test.want, test.wantOK)
+			}
+		})
+	}
+}
 
 func TestValidOIDCCodeVerifier(t *testing.T) {
 	valid := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
