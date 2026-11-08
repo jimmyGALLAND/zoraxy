@@ -88,6 +88,13 @@ func NewGatewayServer(router *AuthRouter) *GatewayServer {
 	mux.HandleFunc("/user", gs.handleUserPortal)
 	mux.HandleFunc("/user/api/", gs.handleUserPortalAPI)
 
+	// OpenID Connect provider endpoints.
+	mux.HandleFunc("/.well-known/openid-configuration", gs.router.oidc.handleDiscovery)
+	mux.HandleFunc("/oidc/authorize", gs.router.oidc.handleAuthorize)
+	mux.HandleFunc("/oidc/token", gs.router.oidc.handleToken)
+	mux.HandleFunc("/oidc/userinfo", gs.router.oidc.handleUserInfo)
+	mux.HandleFunc("/oidc/jwks", gs.router.oidc.handleJWKS)
+
 	return gs
 }
 
