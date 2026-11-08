@@ -110,6 +110,7 @@ type AuthRouter struct {
 	gatewaySessionStore sync.Map //sessionId -> *GatewaySession
 	cookieIdStore       sync.Map //browserSessionID (cookie value) -> *BrowserSession
 	gatewayServer       *GatewayServer
+	oidc                *oidcProvider
 
 	/* Group Policies */
 	groupPolicies sync.Map // id (string) -> *GroupPolicy
