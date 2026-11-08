@@ -241,8 +241,8 @@ func (ar *AuthRouter) saveUser(user *User, previousUsername string) error {
 }
 
 
- // updateUser serializes a complete user read-modify-write operation and always
- // applies the mutation to the latest persisted account record.
+// updateUser serializes a complete user read-modify-write operation and always
+// applies the mutation to the latest persisted account record.
 func (ar *AuthRouter) updateUser(username string, update func(*User) error) (*User, error) {
 	if update == nil {
 		return nil, errors.New("user update function is nil")
