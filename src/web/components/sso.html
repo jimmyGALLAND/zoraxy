@@ -266,6 +266,42 @@
                 <button class="ui basic red button" type="button" onclick="logoutAllUsers();"><i class="ui sign-out icon"></i> Logout All Users</button>
             </form>
             <div class="ui divider"></div>
+            <section id="zorxAuthOIDC">
+                <h3>OpenID Connect Provider</h3>
+                <p>Register OIDC clients for applications using this central Zoraxy Auth issuer. Each client receives its own Client ID and secret.</p>
+                <div class="ui info message">
+                    A reverse proxy association is optional. When set, only one OIDC client can be associated with that proxy, and the authenticated user must be allowed to access its host.
+                </div>
+                <form class="ui form" id="zorxAuthOIDCCreateForm">
+                    <div class="fields">
+                        <div class="eight wide field">
+                            <label for="oidcClientName">Client name</label>
+                            <input id="oidcClientName" type="text" maxlength="120" placeholder="My application" required>
+                        </div>
+                        <div class="eight wide field">
+                            <label for="oidcProxyDomain">Reverse proxy domain (optional)</label>
+                            <input id="oidcProxyDomain" type="text" placeholder="app.example.com">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="oidcRedirectURIs">Allowed redirect URIs</label>
+                        <textarea id="oidcRedirectURIs" rows="3" placeholder="https://app.example.com/oidc/callback" required></textarea>
+                        <small>One exact HTTPS redirect URI per line. These values are matched exactly during authorization.</small>
+                    </div>
+                    <button class="ui primary button" type="submit"><i class="plus icon"></i> Create OIDC client</button>
+                </form>
+                <div id="oidcSecretNotice" class="ui positive message" style="display:none;">
+                    <div class="header">Client created — save this secret now</div>
+                    <p>The secret is displayed only once and cannot be retrieved later.</p>
+                    <div class="ui action input" style="width:100%;">
+                        <input id="oidcNewClientSecret" type="text" readonly>
+                        <button class="ui button" type="button" id="oidcCopySecret">Copy</button>
+                    </div>
+                </div>
+                <h4>Registered clients</h4>
+                <div id="oidcClientsList"><div class="ui active inline loader"></div></div>
+            </section>
+            <div class="ui divider"></div>
             <!-- SSO Settings -->
             <form class="ui form" action="#" id="zorxAuthSettings">
                 <h3>SSO Behavior</h3>
@@ -361,7 +397,112 @@
         /* Load Zoraxy Auth Gateway settings from backend */
         getZorxAuthGatewaySettings();
 
+        /* Load registered OpenID Connect clients */
+        loadZorxAuthOIDCClients();
+
         /* Add more initialization code here if needed */
+    });
+
+
+    function escapeOIDCHtml(value) {
+        return $('<div>').text(value == null ? '' : String(value)).html();
+    }
+
+    function loadZorxAuthOIDCClients() {
+        $('#oidcClientsList').html('<div class="ui active inline loader"></div>');
+        $.ajax({
+            url: '/api/sso/zorxauth/oidc/clients',
+            method: 'GET',
+            dataType: 'json',
+            success: function(data) {
+                var clients = data.clients || [];
+                if (clients.length === 0) {
+                    $('#oidcClientsList').html('<div class="ui message">No OIDC clients registered yet.</div>');
+                    return;
+                }
+                var rows = clients.map(function(client) {
+                    var redirects = (client.redirect_uris || []).map(escapeOIDCHtml).join('<br>');
+                    var proxy = client.proxy_domain ? escapeOIDCHtml(client.proxy_domain) : '<em>Not associated</em>';
+                    return '<tr><td>' + escapeOIDCHtml(client.name) + '</td><td><code>' +
+                        escapeOIDCHtml(client.client_id) + '</code></td><td>' + proxy +
+                        '</td><td>' + redirects + '</td><td><button class="ui basic red mini button oidcDeleteClient" data-client-id="' +
+                        escapeOIDCHtml(client.client_id) + '"><i class="trash icon"></i> Delete</button></td></tr>';
+                }).join('');
+                $('#oidcClientsList').html('<table class="ui celled compact table"><thead><tr><th>Name</th><th>Client ID</th><th>Reverse proxy</th><th>Redirect URIs</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>');
+            },
+            error: function(xhr) {
+                $('#oidcClientsList').html('<div class="ui negative message">Unable to load OIDC clients: ' +
+                    escapeOIDCHtml(xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'request failed') + '</div>');
+            }
+        });
+    }
+
+    $('#zorxAuthOIDCCreateForm').on('submit', function(event) {
+        event.preventDefault();
+        var redirectURIs = ($('#oidcRedirectURIs').val() || '').split(/\\r?\\n/).map(function(uri) {
+            return uri.trim();
+        }).filter(Boolean);
+        if (redirectURIs.length === 0) {
+            msgbox('Enter at least one redirect URI', false);
+            return;
+        }
+        $.ajax({
+            url: '/api/sso/zorxauth/oidc/clients',
+            method: 'POST',
+            contentType: 'application/json',
+            dataType: 'json',
+            data: JSON.stringify({
+                name: $('#oidcClientName').val().trim(),
+                proxy_domain: $('#oidcProxyDomain').val().trim(),
+                redirect_uris: redirectURIs
+            }),
+            success: function(data) {
+                $('#oidcSecretNotice').show();
+                $('#oidcNewClientSecret').val(data.client_secret || '');
+                $('#zorxAuthOIDCCreateForm')[0].reset();
+                loadZorxAuthOIDCClients();
+                msgbox('OIDC client created. Copy and store its secret now.', true);
+            },
+            error: function(xhr) {
+                var message = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Unable to create OIDC client';
+                msgbox(message, false);
+            }
+        });
+    });
+
+    $('#oidcCopySecret').on('click', function() {
+        var secret = $('#oidcNewClientSecret').val();
+        if (!secret) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(secret).then(function() {
+                msgbox('Client secret copied', true);
+            }).catch(function() {
+                $('#oidcNewClientSecret').trigger('focus').trigger('select');
+                msgbox('Select and copy the secret manually', false);
+            });
+        } else {
+            $('#oidcNewClientSecret').trigger('focus').trigger('select');
+            msgbox('Select and copy the secret manually', false);
+        }
+    });
+
+    $('#oidcClientsList').on('click', '.oidcDeleteClient', function() {
+        var clientID = $(this).attr('data-client-id');
+        if (!clientID || !confirm('Delete this OIDC client? Existing integrations using it will stop working.')) return;
+        $.ajax({
+            url: '/api/sso/zorxauth/oidc/clients',
+            method: 'DELETE',
+            contentType: 'application/json',
+            data: JSON.stringify({client_id: clientID}),
+            success: function() {
+                msgbox('OIDC client deleted', true);
+                loadZorxAuthOIDCClients();
+            },
+            error: function(xhr) {
+                var message = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Unable to delete OIDC client';
+                msgbox(message, false);
+            }
+        });
     });
 
     function openZorxAuthUserEditor(){
