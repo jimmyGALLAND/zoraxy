@@ -176,6 +176,16 @@ func (ar *AuthRouter) invalidateUserSessions(username string) {
 		}
 		return true
 	})
+
+	ar.pendingTOTPSetup.Delete(username)
+	ar.pendingPasskeyReg.Range(func(key, value interface{}) bool {
+		token, keyOK := key.(string)
+		pending, valueOK := value.(*PendingPasskeyRegistration)
+		if keyOK && valueOK && pending != nil && strings.EqualFold(pending.Username, username) {
+			ar.pendingPasskeyReg.Delete(token)
+		}
+		return true
+	})
 }
 
 // startLoginRateLimitTicker resets per-IP login attempt counters every minute.
