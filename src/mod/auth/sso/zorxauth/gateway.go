@@ -370,6 +370,16 @@ func (gs *GatewayServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serialize the final credential check and all authentication handoffs with revocation.
+	gs.router.sessionLifecycleMutex.Lock()
+	defer gs.router.sessionLifecycleMutex.Unlock()
+	if !gs.router.ValidateUsername(username, password) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Invalid username or password"})
+		return
+	}
+
 	// Successful login: clear the consecutive-failure counter for this IP
 	gs.router.loginFailureCounter.Delete(clientIP)
 
@@ -663,6 +673,10 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Serialize challenge consumption and session issuance with account revocation.
+	gs.router.sessionLifecycleMutex.Lock()
+	defer gs.router.sessionLifecycleMutex.Unlock()
+
 	// Look up the pending session
 	pendingObj, exists := gs.router.pendingTOTPSessions.LoadAndDelete(totpToken)
 	if !exists {
@@ -699,7 +713,7 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !validateTOTPCode(totpCode, u.TOTPSecret) {
+	if !u.Enable2FA || !validateTOTPCode(totpCode, u.TOTPSecret) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]interface{}{
