@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"testing"
+	"strings"
 )
 
 func TestValidOIDCCodeVerifier(t *testing.T) {
@@ -14,7 +15,7 @@ func TestValidOIDCCodeVerifier(t *testing.T) {
 	if validOIDCCodeVerifier(valid[:42]) {
 		t.Fatal("expected verifier shorter than 43 characters to be rejected")
 	}
-	if validOIDCCodeVerifier(valid + "x") {
+	if validOIDCCodeVerifier(strings.Repeat("a", 129)) {
 		t.Fatal("expected verifier longer than 128 characters to be rejected")
 	}
 	if validOIDCCodeVerifier(valid[:42] + "!") {
