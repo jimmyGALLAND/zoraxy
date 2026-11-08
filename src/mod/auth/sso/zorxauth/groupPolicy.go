@@ -330,12 +330,15 @@ func (ar *AuthRouter) HandleGroupPolicyDelete(w http.ResponseWriter, r *http.Req
 	if err == nil {
 		for _, user := range users {
 			if user.UseGroupPolicy && strings.EqualFold(user.GroupID, id) {
-				user.UseGroupPolicy = false
-				user.GroupID = ""
-				if saveErr := ar.saveUser(user, ""); saveErr != nil {
-					if ar.Logger != nil {
-						ar.Logger.PrintAndLog("zorxauth", "Failed to unassign group policy from user "+user.Username+": "+saveErr.Error(), saveErr)
+				_, saveErr := ar.updateUser(user.Username, func(currentUser *User) error {
+					if currentUser.UseGroupPolicy && strings.EqualFold(currentUser.GroupID, id) {
+						currentUser.UseGroupPolicy = false
+						currentUser.GroupID = ""
 					}
+					return nil
+				})
+				if saveErr != nil && ar.Logger != nil {
+					ar.Logger.PrintAndLog("zorxauth", "Failed to unassign group policy from user "+user.Username+": "+saveErr.Error(), saveErr)
 				}
 			}
 		}
