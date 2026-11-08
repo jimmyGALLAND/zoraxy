@@ -3,8 +3,8 @@ package zorxauth
 import (
 	"crypto/sha256"
 	"encoding/base64"
-	"testing"
 	"strings"
+	"testing"
 )
 
 func TestValidOIDCCodeVerifier(t *testing.T) {
@@ -57,6 +57,28 @@ func TestIsOIDCAuthorizeRedirect(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if got := router.isOIDCAuthorizeRedirect(test.url); got != test.want {
 				t.Fatalf("isOIDCAuthorizeRedirect(%q) = %v, want %v", test.url, got, test.want)
+			}
+		})
+	}
+}
+
+func TestValidOIDCScope(t *testing.T) {
+	tests := []struct {
+		scope string
+		want  bool
+	}{
+		{"openid", true},
+		{"openid profile", true},
+		{"openid email profile", true},
+		{"profile", false},
+		{"openid admin", false},
+		{"openid openid", false},
+		{"", false},
+	}
+	for _, test := range tests {
+		t.Run(test.scope, func(t *testing.T) {
+			if got := validOIDCScope(test.scope); got != test.want {
+				t.Fatalf("validOIDCScope(%q) = %v, want %v", test.scope, got, test.want)
 			}
 		})
 	}
