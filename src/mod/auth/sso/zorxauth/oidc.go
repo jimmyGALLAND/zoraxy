@@ -259,8 +259,12 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported authorization request", http.StatusBadRequest)
 		return
 	}
-	if q.Get("state") == "" || q.Get("nonce") == "" || q.Get("code_challenge_method") != "S256" || q.Get("code_challenge") == "" {
-		http.Error(w, "state, nonce and PKCE S256 are required", http.StatusBadRequest)
+	if q.Get("state") == "" || q.Get("nonce") == "" || q.Get("code_challenge_method") != "S256" || !validOIDCCodeChallenge(q.Get("code_challenge")) {
+		http.Error(w, "state, nonce and a valid PKCE S256 challenge are required", http.StatusBadRequest)
+		return
+	}
+	if p.router.OIDCIssuer() == "" {
+		http.Error(w, "OIDC issuer is not configured", http.StatusServiceUnavailable)
 		return
 	}
 	authenticated, username := p.router.RequestIsAuthenticatedInSSO(w, r)
@@ -336,13 +340,15 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	code := value.(*oidcAuthorizationCode)
+	verifier := r.Form.Get("code_verifier")
 	if time.Now().After(code.ExpiresAt) || code.ClientID != client.ID ||
-		code.RedirectURI != r.Form.Get("redirect_uri") || r.Form.Get("code_verifier") == "" {
+		code.RedirectURI != r.Form.Get("redirect_uri") || !validOIDCCodeVerifier(verifier) {
 		writeOIDCError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
-	challenge := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
-	if base64.RawURLEncoding.EncodeToString(challenge[:]) != code.CodeChallenge {
+	challenge := sha256.Sum256([]byte(verifier))
+	actualChallenge := base64.RawURLEncoding.EncodeToString(challenge[:])
+	if subtle.ConstantTimeCompare([]byte(actualChallenge), []byte(code.CodeChallenge)) != 1 {
 		writeOIDCError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
@@ -467,6 +473,29 @@ func (p *oidcProvider) verifyJWT(token string) (map[string]interface{}, error) {
 		return nil, errors.New("invalid JWT issuer")
 	}
 	return claims, nil
+}
+
+// validOIDCCodeChallenge validates the base64url-encoded SHA-256 challenge required by PKCE S256.
+func validOIDCCodeChallenge(challenge string) bool {
+	if len(challenge) != 43 {
+		return false
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(challenge)
+	return err == nil && len(decoded) == sha256.Size
+}
+
+// validOIDCCodeVerifier enforces the PKCE verifier length and unreserved character set.
+func validOIDCCodeVerifier(verifier string) bool {
+	if len(verifier) < 43 || len(verifier) > 128 {
+		return false
+	}
+	for _, char := range verifier {
+		if !(char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z' ||
+			char >= '0' && char <= '9' || strings.ContainsRune("-._~", char)) {
+			return false
+		}
+	}
+	return true
 }
 
 func verifyOIDCClientSecret(client *OIDCClient, secret string) bool {
