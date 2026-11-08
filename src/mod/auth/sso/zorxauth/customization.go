@@ -58,6 +58,7 @@ const (
 
 	// URL prefix used in your custom HTML
 	CUSTOM_ASSET_PATH = "/assets/custom/"
+	CUSTOM_FOLDER     = "custom"
 )
 
 
@@ -624,7 +625,7 @@ func (ar *AuthRouter) customFolder() string {
 	if base == "" {
 		base = "./conf/sso/zorxauth"
 	}
-	return filepath.Join(base, "custom")
+	return filepath.Join(base, CUSTOM_FOLDER)
 }
 
 // ServeCustomAsset serves static files placed in the custom folder.
