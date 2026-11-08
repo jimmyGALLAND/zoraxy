@@ -21,6 +21,10 @@ func TestInvalidateUserSessions(t *testing.T) {
 	router.cookieIdStore.Store("browser-b", &BrowserSession{Username: "user-b"})
 	router.pendingTOTPSessions.Store("totp-a", &PendingTOTPSession{Username: "user-a"})
 	router.pendingTOTPSessions.Store("totp-b", &PendingTOTPSession{Username: "user-b"})
+	router.pendingTOTPSetup.Store("user-a", &PendingTOTPSetup{Secret: "secret-a"})
+	router.pendingTOTPSetup.Store("user-b", &PendingTOTPSetup{Secret: "secret-b"})
+	router.pendingPasskeyReg.Store("passkey-reg-a", &PendingPasskeyRegistration{Username: "user-a"})
+	router.pendingPasskeyReg.Store("passkey-reg-b", &PendingPasskeyRegistration{Username: "user-b"})
 	router.sessionIdStore.Store("callback-a", "user-a")
 	router.sessionIdStore.Store("callback-b", "user-b")
 	router.oidc.codes.Store("oidc-a", &oidcAuthorizationCode{Username: "user-a"})
@@ -47,6 +51,18 @@ func TestInvalidateUserSessions(t *testing.T) {
 	}
 	if _, exists := router.pendingTOTPSessions.Load("totp-b"); !exists {
 		t.Fatal("expected another user's pending TOTP session to remain")
+	}
+	if _, exists := router.pendingTOTPSetup.Load("user-a"); exists {
+		t.Fatal("expected pending TOTP enrollment to be invalidated")
+	}
+	if _, exists := router.pendingTOTPSetup.Load("user-b"); !exists {
+		t.Fatal("expected another user's pending TOTP enrollment to remain")
+	}
+	if _, exists := router.pendingPasskeyReg.Load("passkey-reg-a"); exists {
+		t.Fatal("expected pending passkey registration to be invalidated")
+	}
+	if _, exists := router.pendingPasskeyReg.Load("passkey-reg-b"); !exists {
+		t.Fatal("expected another user's pending passkey registration to remain")
 	}
 	if _, exists := router.sessionIdStore.Load("callback-a"); exists {
 		t.Fatal("expected pending cross-domain callback to be invalidated")
