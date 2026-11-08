@@ -111,6 +111,7 @@ type AuthRouter struct {
 	cookieIdStore       sync.Map //browserSessionID (cookie value) -> *BrowserSession
 	gatewayServer       *GatewayServer
 	oidcClientMutex     sync.Mutex // Serializes OIDC client registration and proxy association checks
+	userMutationMutex   sync.Mutex // Serializes complete user read-modify-write operations
 	oidc                *oidcProvider
 
 	/* Group Policies */
