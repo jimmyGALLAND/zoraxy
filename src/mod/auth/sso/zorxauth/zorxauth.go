@@ -130,6 +130,13 @@ func (ar *AuthRouter) deleteValidationCodesForUser(username string) {
 // invalidateUserSessions removes all in-memory and persisted sessions and pending
 // authentication handoffs for a user.
 func (ar *AuthRouter) invalidateUserSessions(username string) {
+	ar.sessionLifecycleMutex.Lock()
+	defer ar.sessionLifecycleMutex.Unlock()
+	ar.invalidateUserSessionsLocked(username)
+}
+
+// invalidateUserSessionsLocked removes sessions while the lifecycle mutex is held.
+func (ar *AuthRouter) invalidateUserSessionsLocked(username string) {
 	username = normalizeUsername(username)
 	if username == "" {
 		return
