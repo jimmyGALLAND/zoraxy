@@ -287,6 +287,14 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
+	// Reject duplicated authorization parameters instead of silently accepting
+	// the first value returned by url.Values.Get.
+	for _, name := range []string{"client_id", "redirect_uri", "response_type", "scope", "state", "nonce", "code_challenge", "code_challenge_method"} {
+		if len(q[name]) != 1 {
+			http.Error(w, "missing or duplicated authorization parameter: "+name, http.StatusBadRequest)
+			return
+		}
+	}
 	client, err := p.loadClient(q.Get("client_id"))
 	if err != nil {
 		http.Error(w, "unknown client", http.StatusBadRequest)
