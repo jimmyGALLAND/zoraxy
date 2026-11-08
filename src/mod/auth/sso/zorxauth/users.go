@@ -240,6 +240,39 @@ func (ar *AuthRouter) saveUser(user *User, previousUsername string) error {
 	return nil
 }
 
+
+// updateUser serializes a complete user read-modify-write operation and always
+// applies the mutation to the latest persisted account record.
+func (ar *AuthRouter) updateUser(username string, update func(*User) error) (*User, error) {
+	if update == nil {
+		return nil, errors.New("user update function is nil")
+	}
+
+	ar.userMutationMutex.Lock()
+	defer ar.userMutationMutex.Unlock()
+
+	user, err := ar.getUserByUsername(username)
+	if err != nil {
+		return nil, err
+	}
+	previousUsername := user.Username
+
+	if err := update(user); err != nil {
+		return nil, err
+	}
+
+	if !strings.EqualFold(previousUsername, user.Username) {
+		if _, err := ar.getUserByUsername(user.Username); err == nil {
+			return nil, errors.New("new username already exists")
+		}
+	}
+
+	if err := ar.saveUser(user, previousUsername); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 func (ar *AuthRouter) HandleUsersList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		utils.SendErrorResponse(w, "method not allowed")
@@ -285,6 +318,8 @@ func (ar *AuthRouter) HandleUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ar.userMutationMutex.Lock()
+	defer ar.userMutationMutex.Unlock()
 	if _, err := ar.getUserByUsername(username); err == nil {
 		utils.SendErrorResponse(w, "user already exists")
 		return
@@ -341,64 +376,67 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := ar.getUserByUsername(username)
-	if err != nil {
-		utils.SendErrorResponse(w, "user not found")
-		return
-	}
-
-	originalUsername := user.Username
+	credentialsChanged := false
+	originalUsername := normalizeUsername(username)
 	newUsername := strings.TrimSpace(r.FormValue("newUsername"))
-	if newUsername != "" {
-		if !strings.EqualFold(newUsername, originalUsername) {
-			if _, err := ar.getUserByUsername(newUsername); err == nil {
-				utils.SendErrorResponse(w, "new username already exists")
-				return
-			}
+	user, err := ar.updateUser(username, func(user *User) error {
+		originalUsername = user.Username
+		if newUsername != "" && !strings.EqualFold(newUsername, originalUsername) {
+			user.Username = newUsername
+			credentialsChanged = true
 		}
-		user.Username = newUsername
-	}
 
-	if _, ok := r.Form["email"]; ok {
-		email := strings.TrimSpace(r.FormValue("email"))
-		if email != "" {
-			if _, err := mail.ParseAddress(email); err != nil {
-				utils.SendErrorResponse(w, "invalid email format")
-				return
-			}
-		}
-		user.Email = email
-	}
-
-	if password := strings.TrimSpace(r.FormValue("password")); password != "" {
-		user.PasswordHash = hashPassword(password)
-	}
-
-	if _, ok := r.Form["allowedHosts"]; ok {
-		user.AllowedHosts = normalizeAllowedHosts(r.FormValue("allowedHosts"))
-	}
-
-	// Group policy settings
-	if _, ok := r.Form["useGroupPolicy"]; ok {
-		useGroupPolicy, _ := utils.PostBool(r, "useGroupPolicy")
-		user.UseGroupPolicy = useGroupPolicy
-		if useGroupPolicy {
-			groupId := strings.TrimSpace(r.FormValue("groupId"))
-			if groupId != "" {
-				if _, err := ar.GetGroupPolicyByID(groupId); err != nil {
-					utils.SendErrorResponse(w, "group policy not found")
-					return
+		if _, ok := r.Form["email"]; ok {
+			email := strings.TrimSpace(r.FormValue("email"))
+			if email != "" {
+				if _, err := mail.ParseAddress(email); err != nil {
+					return errors.New("invalid email format")
 				}
 			}
-			user.GroupID = groupId
-		} else {
-			user.GroupID = ""
+			user.Email = email
 		}
+
+		if password := strings.TrimSpace(r.FormValue("password")); password != "" {
+			user.PasswordHash = hashPassword(password)
+			credentialsChanged = true
+		}
+
+		if _, ok := r.Form["allowedHosts"]; ok {
+			user.AllowedHosts = normalizeAllowedHosts(r.FormValue("allowedHosts"))
+		}
+
+		if _, ok := r.Form["useGroupPolicy"]; ok {
+			useGroupPolicy, _ := utils.PostBool(r, "useGroupPolicy")
+			user.UseGroupPolicy = useGroupPolicy
+			if useGroupPolicy {
+				groupID := strings.TrimSpace(r.FormValue("groupId"))
+				if groupID != "" {
+					if _, err := ar.GetGroupPolicyByID(groupID); err != nil {
+						return errors.New("group policy not found")
+					}
+				}
+				user.GroupID = groupID
+			} else {
+				user.GroupID = ""
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		if err.Error() == "user not found" {
+			utils.SendErrorResponse(w, "user not found")
+		} else {
+			utils.SendErrorResponse(w, err.Error())
+		}
+		return
 	}
 
-	if err := ar.saveUser(user, originalUsername); err != nil {
-		utils.SendErrorResponse(w, err.Error())
-		return
+	if credentialsChanged {
+		ar.invalidateUserSessions(originalUsername)
+		if !strings.EqualFold(originalUsername, user.Username) {
+			// saveUser remaps pending SSO callbacks when a username changes.
+			ar.invalidateUserSessions(user.Username)
+		}
 	}
 
 	utils.SendOK(w)
@@ -416,24 +454,23 @@ func (ar *AuthRouter) HandleUserDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ar.userMutationMutex.Lock()
 	user, err := ar.getUserByUsername(username)
 	if err != nil {
+		ar.userMutationMutex.Unlock()
 		utils.SendErrorResponse(w, "user not found")
 		return
 	}
 
 	if err := ar.Database.Delete(DB_USERS_TABLE, ar.userDbKey(user.Username)); err != nil {
+		ar.userMutationMutex.Unlock()
 		utils.SendErrorResponse(w, "failed to delete user")
 		return
 	}
-
-	ar.sessionIdStore.Range(func(key, value interface{}) bool {
-		name, ok := value.(string)
-		if ok && strings.EqualFold(name, user.Username) {
-			ar.sessionIdStore.Delete(key)
-		}
-		return true
-	})
+	// Keep account creation and mutation blocked until the deleted account's
+	// sessions and pending authentication flows have also been invalidated.
+	ar.invalidateUserSessions(user.Username)
+	ar.userMutationMutex.Unlock()
 
 	utils.SendOK(w)
 }
@@ -552,21 +589,16 @@ func (ar *AuthRouter) HandleDisableUserTOTP(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	user, err := ar.getUserByUsername(username)
+	_, err = ar.updateUser(username, func(user *User) error {
+		if !user.Enable2FA {
+			return errors.New("2FA is not enabled for this user")
+		}
+		user.Enable2FA = false
+		user.TOTPSecret = ""
+		return nil
+	})
 	if err != nil {
-		utils.SendErrorResponse(w, "user not found")
-		return
-	}
-
-	if !user.Enable2FA {
-		utils.SendErrorResponse(w, "2FA is not enabled for this user")
-		return
-	}
-
-	user.Enable2FA = false
-	user.TOTPSecret = ""
-	if err := ar.saveUser(user, user.Username); err != nil {
-		utils.SendErrorResponse(w, "failed to save user")
+		utils.SendErrorResponse(w, err.Error())
 		return
 	}
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -159,12 +160,17 @@ func (gs *GatewayServer) handlePasskeyRegisterComplete(w http.ResponseWriter, r 
 		return
 	}
 
-	pendingObj, ok := gs.router.pendingPasskeyReg.Load(token)
+	pendingObj, ok := gs.router.pendingPasskeyReg.LoadAndDelete(token)
 	if !ok {
 		utils.SendErrorResponse(w, "registration session not found or expired")
 		return
 	}
-	pending := pendingObj.(*PendingPasskeyRegistration)
+	pending, ok := pendingObj.(*PendingPasskeyRegistration)
+	if !ok || pending == nil {
+		gs.router.pendingPasskeyReg.Delete(token)
+		utils.SendErrorResponse(w, "invalid registration session")
+		return
+	}
 	if pending.Username != username || time.Now().After(pending.Expiry) {
 		gs.router.pendingPasskeyReg.Delete(token)
 		utils.SendErrorResponse(w, "registration session expired")
@@ -183,37 +189,48 @@ func (gs *GatewayServer) handlePasskeyRegisterComplete(w http.ResponseWriter, r 
 		return
 	}
 
+	if pending.SessionData == nil {
+		utils.SendErrorResponse(w, "invalid registration session data")
+		return
+	}
 	credential, err := wa.FinishRegistration(&webAuthnUser{u: u}, *pending.SessionData, r)
 	if err != nil {
 		utils.SendErrorResponse(w, "registration verification failed: "+err.Error())
 		return
 	}
-	gs.router.pendingPasskeyReg.Delete(token)
 
 	credName := strings.TrimSpace(r.URL.Query().Get("name"))
-	if credName == "" {
-		credName = fmt.Sprintf("Passkey %d", len(u.PasskeyCredentials)+1)
-	}
-
 	transports := make([]string, len(credential.Transport))
 	for i, t := range credential.Transport {
 		transports[i] = string(t)
 	}
-
-	u.PasskeyCredentials = append(u.PasskeyCredentials, PasskeyCredential{
-		ID:             credential.ID,
-		PublicKey:      credential.PublicKey,
-		AAGUID:         credential.Authenticator.AAGUID,
-		SignCount:      credential.Authenticator.SignCount,
-		CloneWarning:   credential.Authenticator.CloneWarning,
-		Transports:     transports,
-		BackupEligible: credential.Flags.BackupEligible,
-		BackupState:    credential.Flags.BackupState,
-		Name:           credName,
-		CreatedAt:      time.Now().Unix(),
-		LastUsedAt:     time.Now().Unix(),
+	createdAt := time.Now().Unix()
+	_, err = gs.router.updateUser(username, func(currentUser *User) error {
+		for _, existing := range currentUser.PasskeyCredentials {
+			if bytes.Equal(existing.ID, credential.ID) {
+				return errors.New("passkey is already registered")
+			}
+		}
+		name := credName
+		if name == "" {
+			name = fmt.Sprintf("Passkey %d", len(currentUser.PasskeyCredentials)+1)
+		}
+		currentUser.PasskeyCredentials = append(currentUser.PasskeyCredentials, PasskeyCredential{
+			ID:             credential.ID,
+			PublicKey:      credential.PublicKey,
+			AAGUID:         credential.Authenticator.AAGUID,
+			SignCount:      credential.Authenticator.SignCount,
+			CloneWarning:   credential.Authenticator.CloneWarning,
+			Transports:     transports,
+			BackupEligible: credential.Flags.BackupEligible,
+			BackupState:    credential.Flags.BackupState,
+			Name:           name,
+			CreatedAt:      createdAt,
+			LastUsedAt:     createdAt,
+		})
+		return nil
 	})
-	if err := gs.router.saveUser(u, u.Username); err != nil {
+	if err != nil {
 		utils.SendErrorResponse(w, "failed to save credential: "+err.Error())
 		return
 	}
@@ -280,28 +297,23 @@ func (gs *GatewayServer) handlePasskeyRemove(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	u, err := gs.router.getUserByUsername(username)
-	if err != nil {
-		utils.SendErrorResponse(w, "user not found")
-		return
-	}
-
-	var updated []PasskeyCredential
-	removed := false
-	for _, c := range u.PasskeyCredentials {
-		if bytes.Equal(c.ID, rawID) {
-			removed = true
-			continue
+	_, err = gs.router.updateUser(username, func(user *User) error {
+		updated := make([]PasskeyCredential, 0, len(user.PasskeyCredentials))
+		removed := false
+		for _, credential := range user.PasskeyCredentials {
+			if bytes.Equal(credential.ID, rawID) {
+				removed = true
+				continue
+			}
+			updated = append(updated, credential)
 		}
-		updated = append(updated, c)
-	}
-	if !removed {
-		utils.SendErrorResponse(w, "credential not found")
-		return
-	}
-
-	u.PasskeyCredentials = updated
-	if err := gs.router.saveUser(u, u.Username); err != nil {
+		if !removed {
+			return errors.New("credential not found")
+		}
+		user.PasskeyCredentials = updated
+		return nil
+	})
+	if err != nil {
 		utils.SendErrorResponse(w, "failed to remove passkey: "+err.Error())
 		return
 	}
@@ -379,15 +391,25 @@ func (gs *GatewayServer) handlePasskeyAuthComplete(w http.ResponseWriter, r *htt
 		return
 	}
 
-	pendingObj, ok := gs.router.pendingPasskeyAuth.Load(token)
+	pendingObj, ok := gs.router.pendingPasskeyAuth.LoadAndDelete(token)
 	if !ok {
 		utils.SendErrorResponse(w, "auth session not found or expired")
 		return
 	}
-	pending := pendingObj.(*PendingPasskeyAuth)
+	pending, ok := pendingObj.(*PendingPasskeyAuth)
+	if !ok || pending == nil {
+		gs.router.pendingPasskeyAuth.Delete(token)
+		utils.SendErrorResponse(w, "invalid auth session")
+		return
+	}
 	if time.Now().After(pending.Expiry) {
 		gs.router.pendingPasskeyAuth.Delete(token)
 		utils.SendErrorResponse(w, "auth session expired")
+		return
+	}
+
+	if pending.SessionData == nil {
+		utils.SendErrorResponse(w, "invalid auth session data")
 		return
 	}
 
@@ -439,17 +461,52 @@ func (gs *GatewayServer) handlePasskeyAuthComplete(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Update sign count and last-used timestamp in storage.
-	for i, c := range foundUser.PasskeyCredentials {
-		if bytes.Equal(c.ID, credential.ID) {
-			foundUser.PasskeyCredentials[i].SignCount = credential.Authenticator.SignCount
-			foundUser.PasskeyCredentials[i].CloneWarning = credential.Authenticator.CloneWarning
-			foundUser.PasskeyCredentials[i].BackupState = credential.Flags.BackupState
-			foundUser.PasskeyCredentials[i].LastUsedAt = time.Now().Unix()
+	// Persist authenticator state against the latest account record. This
+	// preserves concurrent credential and account changes made after WebAuthn
+	// verification began.
+	updatedUser, updateErr := gs.router.updateUser(foundUser.Username, func(user *User) error {
+		for i, storedCredential := range user.PasskeyCredentials {
+			if bytes.Equal(storedCredential.ID, credential.ID) {
+				user.PasskeyCredentials[i].SignCount = credential.Authenticator.SignCount
+				user.PasskeyCredentials[i].CloneWarning = credential.Authenticator.CloneWarning
+				user.PasskeyCredentials[i].BackupState = credential.Flags.BackupState
+				user.PasskeyCredentials[i].LastUsedAt = time.Now().Unix()
+				return nil
+			}
+		}
+		return errors.New("passkey credential was removed during authentication")
+	})
+	if updateErr != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Passkey is no longer registered",
+		})
+		return
+	}
+	foundUser = updatedUser
+
+	// Serialize final account validation and session issuance with revocation.
+	gs.router.sessionLifecycleMutex.Lock()
+	defer gs.router.sessionLifecycleMutex.Unlock()
+	latestUser, latestErr := gs.router.getUserByUsername(foundUser.Username)
+	if latestErr != nil {
+		utils.SendErrorResponse(w, "user no longer exists")
+		return
+	}
+	credentialStillRegistered := false
+	for _, storedCredential := range latestUser.PasskeyCredentials {
+		if bytes.Equal(storedCredential.ID, credential.ID) {
+			credentialStillRegistered = true
 			break
 		}
 	}
-	_ = gs.router.saveUser(foundUser, foundUser.Username)
+	if !credentialStillRegistered {
+		utils.SendErrorResponse(w, "passkey is no longer registered")
+		return
+	}
+	foundUser = latestUser
 
 	// Validate host access using the redirect target.
 	redirectTarget := pending.RedirectTarget

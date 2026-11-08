@@ -88,6 +88,22 @@ func NewGatewayServer(router *AuthRouter) *GatewayServer {
 	mux.HandleFunc("/user", gs.handleUserPortal)
 	mux.HandleFunc("/user/api/", gs.handleUserPortalAPI)
 
+	// OpenID Connect provider endpoints.
+	registerOIDC := func(path string, handler func(http.ResponseWriter, *http.Request)) {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			if gs.router.oidc == nil {
+				http.Error(w, "OIDC provider is unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			handler(w, r)
+		})
+	}
+	registerOIDC("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleDiscovery(w, r) })
+	registerOIDC("/oidc/authorize", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleAuthorize(w, r) })
+	registerOIDC("/oidc/token", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleToken(w, r) })
+	registerOIDC("/oidc/userinfo", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleUserInfo(w, r) })
+	registerOIDC("/oidc/jwks", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleJWKS(w, r) })
+
 	return gs
 }
 
@@ -206,8 +222,9 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 	if authenticated {
 		redirectURL := r.URL.Query().Get("redirect")
 		if redirectURL == "" {
-			redirectURL = "/user" // default to user portal if redirect URL is missing
-			http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+			// Default to the user portal when the gateway is opened directly.
+			http.Redirect(w, r, "/user", http.StatusTemporaryRedirect)
+			return
 		}
 
 		host := ""
@@ -220,14 +237,36 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 
-		if gs.router.ValidateUserAccessToHost(username, host) {
+		// OIDC authorization is hosted by the SSO portal itself. Its protected
+		// resource authorization is checked later against the client's associated proxy.
+		if gs.router.isOIDCAuthorizeRedirect(redirectURL) {
+			http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+			return
+		}
+
+		gs.router.sessionLifecycleMutex.Lock()
+		defer gs.router.sessionLifecycleMutex.Unlock()
+		// The session may have been revoked after the initial authentication check.
+		sessionStillActive := false
+		cookie, cookieErr := r.Cookie(gs.router.Options.CookieName)
+		if cookieErr == nil && cookie.Value != "" {
+			if sessionData, exists := gs.router.gatewaySessionStore.Load(cookie.Value); exists {
+				if currentSession, ok := sessionData.(*GatewaySession); ok && currentSession != nil &&
+					strings.EqualFold(currentSession.Username, username) && time.Now().Before(currentSession.Expiry) {
+					if _, userErr := gs.router.getUserByUsername(username); userErr == nil {
+						sessionStillActive = true
+					}
+				}
+			}
+		}
+		if sessionStillActive && gs.router.ValidateUserAccessToHost(username, host) {
 			// Renew the gateway session expiry time since the user is actively using it
 			rememberMe := false
 			cookie, cookieErr := r.Cookie(gs.router.Options.CookieName)
 			if cookieErr == nil && cookie.Value != "" {
 				// Load the existing gateway session
 				if sessionData, exists := gs.router.gatewaySessionStore.Load(cookie.Value); exists {
-					if gatewaySession, ok := sessionData.(*GatewaySession); ok {
+					if gatewaySession, ok := sessionData.(*GatewaySession); ok && gatewaySession != nil {
 						// Extend the session expiry time, keeping the "Remember Me"
 						// duration if the session was created with it
 						rememberMe = gatewaySession.RememberMe
@@ -236,8 +275,13 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 							renewDuration = gs.router.Options.CookieDurationRememberMe
 						}
 						newExpiry := time.Now().Add(time.Duration(renewDuration) * time.Second)
-						gatewaySession.Expiry = newExpiry
-						gs.router.gatewaySessionStore.Store(cookie.Value, gatewaySession)
+						// Store a new immutable value instead of mutating the shared session
+						// pointer, which may be read concurrently by authentication checks.
+						gs.router.gatewaySessionStore.Store(cookie.Value, &GatewaySession{
+							Username:   gatewaySession.Username,
+							Expiry:     newExpiry,
+							RememberMe: gatewaySession.RememberMe,
+						})
 					}
 				}
 			}
@@ -341,6 +385,16 @@ func (gs *GatewayServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serialize the final credential check and all authentication handoffs with revocation.
+	gs.router.sessionLifecycleMutex.Lock()
+	defer gs.router.sessionLifecycleMutex.Unlock()
+	if !gs.router.ValidateUsername(username, password) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Invalid username or password"})
+		return
+	}
+
 	// Successful login: clear the consecutive-failure counter for this IP
 	gs.router.loginFailureCounter.Delete(clientIP)
 
@@ -386,7 +440,10 @@ func (gs *GatewayServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !gs.router.ValidateUserAccessToHost(u.Username, host) {
+	// An OIDC authorization request returns to the SSO portal, not to the
+	// protected application. The application permission is checked by the provider.
+	isOIDCFlow := gs.router.isOIDCAuthorizeRedirect(redirectTarget)
+	if !isOIDCFlow && !gs.router.ValidateUserAccessToHost(u.Username, host) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -479,6 +536,18 @@ func (gs *GatewayServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The gateway cookie is already set on the SSO origin. Do not issue a
+	// cross-domain ZorxAuth session callback for an OIDC authorization request.
+	if isOIDCFlow {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":        true,
+			"redirectTarget": redirectTarget,
+		})
+		return
+	}
+
 	sessionId := gs.router.generateValidationCodeForSession(u.Username)
 	hostWithPort := host
 	if port != "" {
@@ -557,33 +626,8 @@ func (gs *GatewayServer) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the session cookie for the current browser
-	cookie, err := r.Cookie(gs.router.Options.CookieName)
-	if err == nil && cookie.Value != "" {
-		// Remove from gateway session store
-		gs.router.gatewaySessionStore.Delete(cookie.Value)
-	}
-
-	// Iterate through all browser sessions and remove all sessions for this username
-	// This ensures the user is logged out from ALL devices/browsers
-	gs.router.cookieIdStore.Range(func(key, value interface{}) bool {
-		sessionID, ok := key.(string)
-		if !ok {
-			return true // continue iteration
-		}
-
-		browserSession, ok := value.(*BrowserSession)
-		if !ok {
-			return true // continue iteration
-		}
-
-		// If this session belongs to the current user, delete it
-		if browserSession.Username == username {
-			gs.router.cookieIdStore.Delete(sessionID)
-		}
-
-		return true // continue iteration
-	})
+	// Invalidate every active session and pending authentication handoff for this user.
+	gs.router.invalidateUserSessions(username)
 
 	// Expire the cookie in the current browser
 	isSecure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
@@ -644,8 +688,12 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Serialize challenge consumption and session issuance with account revocation.
+	gs.router.sessionLifecycleMutex.Lock()
+	defer gs.router.sessionLifecycleMutex.Unlock()
+
 	// Look up the pending session
-	pendingObj, exists := gs.router.pendingTOTPSessions.Load(totpToken)
+	pendingObj, exists := gs.router.pendingTOTPSessions.LoadAndDelete(totpToken)
 	if !exists {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
@@ -657,7 +705,7 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 	}
 
 	pending, ok := pendingObj.(*PendingTOTPSession)
-	if !ok || time.Now().After(pending.Expiry) {
+	if !ok || pending == nil || time.Now().After(pending.Expiry) {
 		gs.router.pendingTOTPSessions.Delete(totpToken)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
@@ -667,9 +715,6 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 		})
 		return
 	}
-
-	// One-time use: consume the pending session immediately
-	gs.router.pendingTOTPSessions.Delete(totpToken)
 
 	// Fetch user and validate the TOTP code
 	u, err := gs.router.getUserByUsername(pending.Username)
@@ -683,7 +728,7 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !validateTOTPCode(totpCode, u.TOTPSecret) {
+	if !u.Enable2FA || !validateTOTPCode(totpCode, u.TOTPSecret) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -729,6 +774,16 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":        true,
 			"redirectTarget": "/user",
+		})
+		return
+	}
+
+	if gs.router.isOIDCAuthorizeRedirect(pending.RedirectTarget) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":        true,
+			"redirectTarget": pending.RedirectTarget,
 		})
 		return
 	}

@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -265,9 +266,9 @@ func TestServeCustomAsset(t *testing.T) {
 	}{
 		{"served png", http.MethodGet, "/assets/custom/logo.png", http.StatusOK, "PNGDATA"},
 		{"served pdf", http.MethodGet, "/assets/custom/guide.pdf", http.StatusOK, "PDFDATA"},
-		{"served from sub folder", http.MethodGet, "/assets/custom/sub/deep.png", http.StatusOK, "alert(1)"},
+		{"served from sub folder", http.MethodGet, "/assets/custom/sub/deep.png", http.StatusOK, "DEEPDATA"},
 		{"head request allowed", http.MethodHead, "/assets/custom/logo.png", http.StatusOK, ""},
-		{"js refused", http.MethodGet, "/assets/custom/script.js", http.StatusOK, "JSDATA"},
+		{"js refused", http.MethodGet, "/assets/custom/script.js", http.StatusNotFound, ""},
 
 		{"missing file", http.MethodGet, "/assets/custom/nope.png", http.StatusNotFound, ""},
 		{"empty name", http.MethodGet, "/assets/custom/", http.StatusNotFound, ""},

@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"html"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -58,6 +57,7 @@ const (
 
 	// URL prefix used in your custom HTML
 	CUSTOM_ASSET_PATH = "/assets/custom/"
+	CUSTOM_FOLDER     = "custom"
 )
 
 
@@ -616,7 +616,7 @@ func (ar *AuthRouter) HandleCustomizationReset(w http.ResponseWriter, r *http.Re
 var customAssetTypes = map[string]bool{
 	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true,
 	".svg": true, ".ico": true, ".css": true, ".woff": true, ".woff2": true,
-	".pdf": true, ".txt": true, ".zip": true, ".js": true,
+	".pdf": true, ".txt": true, ".zip": true,
 }
 
 func (ar *AuthRouter) customFolder() string {
@@ -624,13 +624,12 @@ func (ar *AuthRouter) customFolder() string {
 	if base == "" {
 		base = "./conf/sso/zorxauth"
 	}
-	return filepath.Join(base, "custom")
+	return filepath.Join(base, CUSTOM_FOLDER)
 }
 
 // ServeCustomAsset serves static files placed in the custom folder.
 func (ar *AuthRouter) ServeCustomAsset(w http.ResponseWriter, r *http.Request) {
   
-	log.Println("custom asset:", r.URL.Path, "-> folder:", ar.customFolder())
   
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -681,9 +680,6 @@ func (ar *AuthRouter) ServeCustomAsset(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Disposition", "attachment")
 		}
 	}
-    if ext == ".js" {
-       w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-    }
 
 	http.ServeFile(w, r, full)
 }

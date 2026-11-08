@@ -29,7 +29,7 @@ func (ar *AuthRouter) RequestIsAuthenticatedInHost(w http.ResponseWriter, r *htt
 
 	// Check if session has expired
 	browserSession, ok := sessionData.(*BrowserSession)
-	if !ok {
+	if !ok || browserSession == nil {
 		return false
 	}
 
@@ -54,7 +54,7 @@ func (ar *AuthRouter) RequestIsAuthenticatedInSSO(w http.ResponseWriter, r *http
 	}
 
 	gatewaySession, ok := sessionData.(*GatewaySession)
-	if !ok {
+	if !ok || gatewaySession == nil {
 		return false, ""
 	}
 
@@ -62,29 +62,8 @@ func (ar *AuthRouter) RequestIsAuthenticatedInSSO(w http.ResponseWriter, r *http
 	if time.Now().After(gatewaySession.Expiry) {
 		username := gatewaySession.Username
 
-		// Delete the expired gateway session
-		ar.gatewaySessionStore.Delete(cookie.Value)
-
-		// Clear all browser sessions (cookieIdStore) for this user
-		// When the SSO portal session expires, all site-specific sessions should also be invalidated
-		ar.cookieIdStore.Range(func(key, value interface{}) bool {
-			sessionID, ok := key.(string)
-			if !ok {
-				return true // continue iteration
-			}
-
-			browserSession, ok := value.(*BrowserSession)
-			if !ok {
-				return true // continue iteration
-			}
-
-			// If this browser session belongs to the expired user, delete it
-			if browserSession.Username == username {
-				ar.cookieIdStore.Delete(sessionID)
-			}
-
-			return true // continue iteration
-		})
+		// Expired central SSO sessions invalidate all related sessions and handoffs.
+		ar.invalidateUserSessions(username)
 
 		return false, ""
 	}
@@ -120,7 +99,10 @@ func (ar *AuthRouter) handleSessionSetCallback(w http.ResponseWriter, r *http.Re
 		redirectURL = "/" // default to home page if redirect URL is missing
 	}
 
-	usernameObj, exists := ar.sessionIdStore.Load(sessionID)
+	ar.sessionLifecycleMutex.Lock()
+	defer ar.sessionLifecycleMutex.Unlock()
+
+	usernameObj, exists := ar.sessionIdStore.LoadAndDelete(sessionID)
 	if !exists {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusUnauthorized)
@@ -136,8 +118,12 @@ func (ar *AuthRouter) handleSessionSetCallback(w http.ResponseWriter, r *http.Re
 		return errors.New("validation session is invalid")
 	}
 
-	// One-time use validation code
-	ar.sessionIdStore.Delete(sessionID)
+	if _, err := ar.getUserByUsername(username); err != nil {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write(invalidHTML)
+		return errors.New("user no longer exists")
+	}
 
 	// Generate long living session cookie for browser with the username and expiry time
 	browserSessionID := ar.generateSessionToken()

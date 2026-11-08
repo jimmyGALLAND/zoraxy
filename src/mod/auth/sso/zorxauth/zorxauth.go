@@ -62,6 +62,11 @@ func NewAuthRouter(db *database.Database, log *logger.Logger) *AuthRouter {
 		rateLimitResetStop: make(chan bool, 1),
 	}
 
+	// Initialize the OIDC provider and its persistent signing key.
+	if err := authRouter.initOIDCProvider(); err != nil && log != nil {
+		log.PrintAndLog("zorxauth", "Failed to initialize OIDC provider: "+err.Error(), err)
+	}
+
 	// Load browser sessions from database
 	authRouter.loadBrowserSessions()
 
@@ -110,6 +115,84 @@ func (ar *AuthRouter) generateValidationCodeForSession(sessionId string) string 
 	})
 
 	return validationCode
+}
+
+// deleteValidationCodesForUser invalidates pending cross-domain SSO callbacks for a user.
+func (ar *AuthRouter) deleteValidationCodesForUser(username string) {
+	ar.sessionIdStore.Range(func(key, value interface{}) bool {
+		if storedUsername, ok := value.(string); ok && storedUsername == username {
+			ar.sessionIdStore.Delete(key)
+		}
+		return true
+	})
+}
+
+// invalidateUserSessions removes all in-memory and persisted sessions and pending
+// authentication handoffs for a user.
+func (ar *AuthRouter) invalidateUserSessions(username string) {
+	ar.sessionLifecycleMutex.Lock()
+	defer ar.sessionLifecycleMutex.Unlock()
+	ar.invalidateUserSessionsLocked(username)
+}
+
+// invalidateUserSessionsLocked removes sessions while the lifecycle mutex is held.
+func (ar *AuthRouter) invalidateUserSessionsLocked(username string) {
+	username = normalizeUsername(username)
+	if username == "" {
+		return
+	}
+
+	ar.deleteValidationCodesForUser(username)
+	if ar.oidc != nil {
+		ar.oidc.deleteAuthorizationCodesForUser(username)
+	}
+
+	ar.gatewaySessionStore.Range(func(key, value interface{}) bool {
+		sessionID, keyOK := key.(string)
+		session, valueOK := value.(*GatewaySession)
+		if keyOK && valueOK && session != nil && strings.EqualFold(session.Username, username) {
+			ar.gatewaySessionStore.Delete(sessionID)
+			if ar.Database != nil {
+				if err := ar.Database.Delete(DB_GATEWAY_SESSIONS_TABLE, DB_GATEWAY_SESSION_KEY_PREFIX+sessionID); err != nil && ar.Logger != nil {
+					ar.Logger.PrintAndLog("zorxauth", "Failed to delete persisted gateway session: "+err.Error(), err)
+				}
+			}
+		}
+		return true
+	})
+
+	ar.cookieIdStore.Range(func(key, value interface{}) bool {
+		sessionID, keyOK := key.(string)
+		session, valueOK := value.(*BrowserSession)
+		if keyOK && valueOK && session != nil && strings.EqualFold(session.Username, username) {
+			ar.cookieIdStore.Delete(sessionID)
+			if ar.Database != nil {
+				if err := ar.Database.Delete(DB_BROWSER_SESSIONS_TABLE, DB_BROWSER_SESSION_KEY_PREFIX+sessionID); err != nil && ar.Logger != nil {
+					ar.Logger.PrintAndLog("zorxauth", "Failed to delete persisted browser session: "+err.Error(), err)
+				}
+			}
+		}
+		return true
+	})
+
+	ar.pendingTOTPSessions.Range(func(key, value interface{}) bool {
+		token, keyOK := key.(string)
+		pending, valueOK := value.(*PendingTOTPSession)
+		if keyOK && valueOK && pending != nil && strings.EqualFold(pending.Username, username) {
+			ar.pendingTOTPSessions.Delete(token)
+		}
+		return true
+	})
+
+	ar.pendingTOTPSetup.Delete(username)
+	ar.pendingPasskeyReg.Range(func(key, value interface{}) bool {
+		token, keyOK := key.(string)
+		pending, valueOK := value.(*PendingPasskeyRegistration)
+		if keyOK && valueOK && pending != nil && strings.EqualFold(pending.Username, username) {
+			ar.pendingPasskeyReg.Delete(token)
+		}
+		return true
+	})
 }
 
 // startLoginRateLimitTicker resets per-IP login attempt counters every minute.

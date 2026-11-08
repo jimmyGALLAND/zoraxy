@@ -653,10 +653,11 @@
         btn.textContent = 'Change Password';
 
         if (ok) {
-            showAlert(okEl, 'Password changed successfully.');
+            showAlert(okEl, 'Password changed. All sessions have been signed out. Redirecting to sign-in…');
             document.getElementById('currentPw').value = '';
             document.getElementById('newPw').value     = '';
             document.getElementById('confirmPw').value = '';
+            setTimeout(() => { window.location.href = '/'; }, 1500);
         } else {
             showAlert(errEl, (data && data.error) || 'Failed to change password.');
         }

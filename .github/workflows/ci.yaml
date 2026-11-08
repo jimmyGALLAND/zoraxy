@@ -2,7 +2,7 @@ name: CI (lints, tests (todo), and builds)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/zorxauth-oidc-provider ]
   pull_request:
   workflow_dispatch:
 
