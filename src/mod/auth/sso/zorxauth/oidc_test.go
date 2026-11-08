@@ -283,3 +283,62 @@ func TestValidOIDCAccessTokenClaims(t *testing.T) {
 		})
 	}
 }
+
+
+func TestVerifyOIDCJWTRejectsTampering(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate signing key: %v", err)
+	}
+	router := &AuthRouter{Options: &AuthRouterOptions{
+		SSORedirectURL: "https://auth.example.test",
+	}}
+	publicDER, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	fingerprint := sha256.Sum256(publicDER)
+	provider := &oidcProvider{
+		router: router,
+		key: &oidcSigningMaterial{
+			PrivateKey: privateKey,
+			KeyID:      base64.RawURLEncoding.EncodeToString(fingerprint[:]),
+		},
+	}
+	token, err := provider.signJWT(map[string]interface{}{
+		"iss": router.OIDCIssuer(),
+		"sub": "user-123",
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(time.Minute).Unix(),
+	})
+	if err != nil {
+		t.Fatalf("sign JWT: %v", err)
+	}
+
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatal("expected a three-part JWT")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode JWT payload: %v", err)
+	}
+	payload = append(payload, ' ')
+	tamperedPayload := parts[0] + "." + base64.RawURLEncoding.EncodeToString(payload) + "." + parts[2]
+	if _, err := provider.verifyJWT(tamperedPayload); err == nil {
+		t.Fatal("expected a modified JWT payload to fail signature verification")
+	}
+
+	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		t.Fatalf("decode JWT signature: %v", err)
+	}
+	signature[0] ^= 0xff
+	tamperedSignature := parts[0] + "." + parts[1] + "." + base64.RawURLEncoding.EncodeToString(signature)
+	if _, err := provider.verifyJWT(tamperedSignature); err == nil {
+		t.Fatal("expected a modified JWT signature to be rejected")
+	}
+	if _, err := provider.verifyJWT("not-a-jwt"); err == nil {
+		t.Fatal("expected malformed JWT to be rejected")
+	}
+}
