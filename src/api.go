@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -115,6 +116,34 @@ func RegisterAuthenticationHandlerAPIs(authRouter *auth.RouterDef) {
 	authRouter.HandleFunc("/api/sso/OAuth2", oauth2Router.HandleSetOAuth2Settings)
 	authRouter.HandleFunc("/api/sso/zorxauth/provider", zorxAuthRouter.HandleAuthProviderSettings)
 	authRouter.HandleFunc("/api/sso/zorxauth/gateway", zorxAuthRouter.HandleGatewaySettings)
+	authRouter.HandleFunc("/api/sso/zorxauth/oidc/clients", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+			if err != nil {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
+			var request struct {
+				ProxyDomain string `json:"proxy_domain"`
+			}
+			if err := json.Unmarshal(body, &request); err != nil {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
+			if request.ProxyDomain != "" {
+				if dynamicProxyRouter == nil {
+					http.Error(w, "proxy router is unavailable", http.StatusServiceUnavailable)
+					return
+				}
+				if _, err := dynamicProxyRouter.LoadProxy(request.ProxyDomain); err != nil {
+					http.Error(w, "proxy domain does not match an existing reverse proxy", http.StatusBadRequest)
+					return
+				}
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+		}
+		zorxAuthRouter.HandleOIDCClients(w, r)
+	})
 
 	// Login page branding customization
 	authRouter.HandleFunc("/api/sso/zorxauth/customization", zorxAuthRouter.HandleCustomizationSettings)
