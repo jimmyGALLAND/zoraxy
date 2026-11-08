@@ -12,6 +12,56 @@ import (
 	"time"
 )
 
+func TestInvalidateUserSessions(t *testing.T) {
+	router := &AuthRouter{}
+	router.oidc = &oidcProvider{}
+	router.gatewaySessionStore.Store("gateway-a", &GatewaySession{Username: "user-a"})
+	router.gatewaySessionStore.Store("gateway-b", &GatewaySession{Username: "user-b"})
+	router.cookieIdStore.Store("browser-a", &BrowserSession{Username: "user-a"})
+	router.cookieIdStore.Store("browser-b", &BrowserSession{Username: "user-b"})
+	router.pendingTOTPSessions.Store("totp-a", &PendingTOTPSession{Username: "user-a"})
+	router.pendingTOTPSessions.Store("totp-b", &PendingTOTPSession{Username: "user-b"})
+	router.sessionIdStore.Store("callback-a", "user-a")
+	router.sessionIdStore.Store("callback-b", "user-b")
+	router.oidc.codes.Store("oidc-a", &oidcAuthorizationCode{Username: "user-a"})
+	router.oidc.codes.Store("oidc-b", &oidcAuthorizationCode{Username: "user-b"})
+
+	router.invalidateUserSessions("user-a")
+
+	for _, key := range []string{"gateway-a"} {
+		if _, exists := router.gatewaySessionStore.Load(key); exists {
+			t.Fatalf("expected gateway session %q to be invalidated", key)
+		}
+	}
+	if _, exists := router.gatewaySessionStore.Load("gateway-b"); !exists {
+		t.Fatal("expected another user's gateway session to remain")
+	}
+	if _, exists := router.cookieIdStore.Load("browser-a"); exists {
+		t.Fatal("expected browser session to be invalidated")
+	}
+	if _, exists := router.cookieIdStore.Load("browser-b"); !exists {
+		t.Fatal("expected another user's browser session to remain")
+	}
+	if _, exists := router.pendingTOTPSessions.Load("totp-a"); exists {
+		t.Fatal("expected pending TOTP session to be invalidated")
+	}
+	if _, exists := router.pendingTOTPSessions.Load("totp-b"); !exists {
+		t.Fatal("expected another user's pending TOTP session to remain")
+	}
+	if _, exists := router.sessionIdStore.Load("callback-a"); exists {
+		t.Fatal("expected pending cross-domain callback to be invalidated")
+	}
+	if _, exists := router.sessionIdStore.Load("callback-b"); !exists {
+		t.Fatal("expected another user's callback to remain")
+	}
+	if _, exists := router.oidc.codes.Load("oidc-a"); exists {
+		t.Fatal("expected pending OIDC authorization code to be invalidated")
+	}
+	if _, exists := router.oidc.codes.Load("oidc-b"); !exists {
+		t.Fatal("expected another user's OIDC authorization code to remain")
+	}
+}
+
 func TestDeleteValidationCodesForUser(t *testing.T) {
 	router := &AuthRouter{}
 	router.sessionIdStore.Store("code-user-a-1", "user-a")
