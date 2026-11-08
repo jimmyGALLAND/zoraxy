@@ -427,13 +427,7 @@ func (ar *AuthRouter) HandleUserDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ar.sessionIdStore.Range(func(key, value interface{}) bool {
-		name, ok := value.(string)
-		if ok && strings.EqualFold(name, user.Username) {
-			ar.sessionIdStore.Delete(key)
-		}
-		return true
-	})
+	ar.invalidateUserSessions(user.Username)
 
 	utils.SendOK(w)
 }
