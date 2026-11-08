@@ -90,6 +90,10 @@ func (ar *AuthRouter) initOIDCProvider() error {
 		if !ok {
 			return errors.New("OIDC signing key is not RSA")
 		}
+		if err := privateKey.Validate(); err != nil {
+			return fmt.Errorf("invalid OIDC signing key: %w", err)
+		}
+		privateKey.Precompute()
 		key.PrivateKey = privateKey
 	} else {
 		privateKey, err := rsa.GenerateKey(rand.Reader, 3072)
