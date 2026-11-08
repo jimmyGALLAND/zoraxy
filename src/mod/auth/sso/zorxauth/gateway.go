@@ -222,8 +222,9 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 	if authenticated {
 		redirectURL := r.URL.Query().Get("redirect")
 		if redirectURL == "" {
-			redirectURL = "/user" // default to user portal if redirect URL is missing
-			http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+			// Default to the user portal when the gateway is opened directly.
+			http.Redirect(w, r, "/user", http.StatusTemporaryRedirect)
+			return
 		}
 
 		host := ""
