@@ -238,7 +238,23 @@ func (ar *AuthRouter) DeleteOIDCClient(clientID string) error {
 	if !ar.Database.KeyExists(oidcClientsTable, clientID) {
 		return errors.New("OIDC client not found")
 	}
-	return ar.Database.Delete(oidcClientsTable, clientID)
+	if err := ar.Database.Delete(oidcClientsTable, clientID); err != nil {
+		return err
+	}
+	if ar.oidc != nil {
+		ar.oidc.deleteAuthorizationCodesForClient(clientID)
+	}
+	return nil
+}
+
+func (p *oidcProvider) deleteAuthorizationCodesForClient(clientID string) {
+	p.codes.Range(func(key, value interface{}) bool {
+		code, ok := value.(*oidcAuthorizationCode)
+		if ok && code != nil && code.ClientID == clientID {
+			p.codes.Delete(key)
+		}
+		return true
+	})
 }
 
 func (p *oidcProvider) loadClient(clientID string) (*OIDCClient, error) {
