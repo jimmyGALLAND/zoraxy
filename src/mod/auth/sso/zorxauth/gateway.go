@@ -89,11 +89,20 @@ func NewGatewayServer(router *AuthRouter) *GatewayServer {
 	mux.HandleFunc("/user/api/", gs.handleUserPortalAPI)
 
 	// OpenID Connect provider endpoints.
-	mux.HandleFunc("/.well-known/openid-configuration", gs.router.oidc.handleDiscovery)
-	mux.HandleFunc("/oidc/authorize", gs.router.oidc.handleAuthorize)
-	mux.HandleFunc("/oidc/token", gs.router.oidc.handleToken)
-	mux.HandleFunc("/oidc/userinfo", gs.router.oidc.handleUserInfo)
-	mux.HandleFunc("/oidc/jwks", gs.router.oidc.handleJWKS)
+	registerOIDC := func(path string, handler func(http.ResponseWriter, *http.Request)) {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			if gs.router.oidc == nil {
+				http.Error(w, "OIDC provider is unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			handler(w, r)
+		})
+	}
+	registerOIDC("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleDiscovery(w, r) })
+	registerOIDC("/oidc/authorize", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleAuthorize(w, r) })
+	registerOIDC("/oidc/token", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleToken(w, r) })
+	registerOIDC("/oidc/userinfo", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleUserInfo(w, r) })
+	registerOIDC("/oidc/jwks", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleJWKS(w, r) })
 
 	return gs
 }
