@@ -350,16 +350,13 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 	originalUsername := user.Username
 	credentialsChanged := false
 	newUsername := strings.TrimSpace(r.FormValue("newUsername"))
-	if newUsername != "" {
-		if !strings.EqualFold(newUsername, originalUsername) {
-			if _, err := ar.getUserByUsername(newUsername); err == nil {
-				utils.SendErrorResponse(w, "new username already exists")
-				return
-			}
+	if newUsername != "" && !strings.EqualFold(newUsername, originalUsername) {
+		if _, err := ar.getUserByUsername(newUsername); err == nil {
+			utils.SendErrorResponse(w, "new username already exists")
+			return
 		}
-			user.Username = newUsername
-			credentialsChanged = true
-		}
+		user.Username = newUsername
+		credentialsChanged = true
 	}
 
 	if _, ok := r.Form["email"]; ok {
