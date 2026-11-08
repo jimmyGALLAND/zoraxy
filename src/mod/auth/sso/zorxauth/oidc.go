@@ -388,22 +388,13 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 		writeOIDCError(w, http.StatusBadRequest, "unsupported_grant_type")
 		return
 	}
-	codeValue := r.PostForm.Get("code")
-	value, exists := p.codes.LoadAndDelete(codeValue)
-	if !exists {
-		writeOIDCError(w, http.StatusBadRequest, "invalid_grant")
-		return
-	}
-	code := value.(*oidcAuthorizationCode)
-	verifier := r.PostForm.Get("code_verifier")
-	if time.Now().After(code.ExpiresAt) || code.ClientID != client.ID ||
-		code.RedirectURI != r.PostForm.Get("redirect_uri") || !validOIDCCodeVerifier(verifier) {
-		writeOIDCError(w, http.StatusBadRequest, "invalid_grant")
-		return
-	}
-	challenge := sha256.Sum256([]byte(verifier))
-	actualChallenge := base64.RawURLEncoding.EncodeToString(challenge[:])
-	if subtle.ConstantTimeCompare([]byte(actualChallenge), []byte(code.CodeChallenge)) != 1 {
+	code, err := p.consumeAuthorizationCode(
+		r.PostForm.Get("code"),
+		client.ID,
+		r.PostForm.Get("redirect_uri"),
+		r.PostForm.Get("code_verifier"),
+	)
+	if err != nil {
 		writeOIDCError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
@@ -442,6 +433,29 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 		"access_token": accessToken, "token_type": "Bearer", "expires_in": int(oidcTokenLifetime.Seconds()),
 		"id_token": idToken, "scope": code.Scope,
 	})
+}
+
+
+func (p *oidcProvider) consumeAuthorizationCode(codeValue, clientID, redirectURI, verifier string) (*oidcAuthorizationCode, error) {
+	value, exists := p.codes.LoadAndDelete(codeValue)
+	if !exists {
+		return nil, errors.New("authorization code not found or already used")
+	}
+	code, ok := value.(*oidcAuthorizationCode)
+	if !ok || code == nil {
+		return nil, errors.New("invalid authorization code")
+	}
+	if !time.Now().Before(code.ExpiresAt) || code.ClientID != clientID ||
+		code.RedirectURI != redirectURI || code.CodeChallengeMethod != "S256" ||
+		!validOIDCCodeVerifier(verifier) {
+		return nil, errors.New("authorization code validation failed")
+	}
+	challenge := sha256.Sum256([]byte(verifier))
+	actualChallenge := base64.RawURLEncoding.EncodeToString(challenge[:])
+	if subtle.ConstantTimeCompare([]byte(actualChallenge), []byte(code.CodeChallenge)) != 1 {
+		return nil, errors.New("PKCE verification failed")
+	}
+	return code, nil
 }
 
 func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
