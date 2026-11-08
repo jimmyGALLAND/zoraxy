@@ -8,9 +8,82 @@ import (
 	"encoding/base64"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
+	"path/filepath"
+
+	"imuslab.com/zoraxy/mod/database"
+	"imuslab.com/zoraxy/mod/database/dbinc"
 	"time"
 )
+
+
+func TestUpdateUserSerializesConcurrentMutations(t *testing.T) {
+	db, err := database.NewDatabase(filepath.Join(t.TempDir(), "users.db"), dbinc.BackendBoltDB)
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	defer db.Close()
+	if err := db.NewTable(DB_USERS_TABLE); err != nil {
+		t.Fatalf("create users table: %v", err)
+	}
+
+	router := &AuthRouter{Database: db}
+	if err := router.saveUser(&User{
+		Username:     "user-a",
+		PasswordHash: hashPassword("initial-password"),
+	}, ""); err != nil {
+		t.Fatalf("create test user: %v", err)
+	}
+
+	updates := []func(*User) error{
+		func(user *User) error {
+			user.Email = "user@example.test"
+			return nil
+		},
+		func(user *User) error {
+			user.AllowedHosts = []string{"app.example.test"}
+			return nil
+		},
+		func(user *User) error {
+			user.Enable2FA = true
+			user.TOTPSecret = "test-secret"
+			return nil
+		},
+	}
+
+	var waitGroup sync.WaitGroup
+	errorsFound := make(chan error, len(updates))
+	for _, update := range updates {
+		waitGroup.Add(1)
+		go func(update func(*User) error) {
+			defer waitGroup.Done()
+			_, err := router.updateUser("user-a", update)
+			if err != nil {
+				errorsFound <- err
+			}
+		}(update)
+	}
+	waitGroup.Wait()
+	close(errorsFound)
+	for err := range errorsFound {
+		t.Errorf("concurrent user update failed: %v", err)
+	}
+
+	user, err := router.getUserByUsername("user-a")
+	if err != nil {
+		t.Fatalf("reload test user: %v", err)
+	}
+	if user.Email != "user@example.test" {
+		t.Errorf("email update was lost: got %q", user.Email)
+	}
+	if len(user.AllowedHosts) != 1 || user.AllowedHosts[0] != "app.example.test" {
+		t.Errorf("allowed-host update was lost: got %#v", user.AllowedHosts)
+	}
+	if !user.Enable2FA || user.TOTPSecret != "test-secret" {
+		t.Errorf("TOTP update was lost: enabled=%t", user.Enable2FA)
+	}
+}
 
 func TestInvalidateUserSessions(t *testing.T) {
 	router := &AuthRouter{}
