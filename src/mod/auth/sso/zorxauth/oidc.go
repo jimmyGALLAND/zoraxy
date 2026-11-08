@@ -300,7 +300,7 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "redirect_uri mismatch", http.StatusBadRequest)
 		return
 	}
-	if q.Get("response_type") != "code" || !hasOIDCScope(q.Get("scope"), "openid") {
+	if q.Get("response_type") != "code" || !validOIDCScope(q.Get("scope")) {
 		http.Error(w, "unsupported authorization request", http.StatusBadRequest)
 		return
 	}
@@ -398,7 +398,7 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	code := value.(*oidcAuthorizationCode)
-	verifier := r.Form.Get("code_verifier")
+	verifier := r.PostForm.Get("code_verifier")
 	if time.Now().After(code.ExpiresAt) || code.ClientID != client.ID ||
 		code.RedirectURI != r.PostForm.Get("redirect_uri") || !validOIDCCodeVerifier(verifier) {
 		writeOIDCError(w, http.StatusBadRequest, "invalid_grant")
@@ -448,6 +448,10 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		writeOIDCError(w, http.StatusMethodNotAllowed, "invalid_request")
+		return
+	}
 	authorization := strings.Fields(r.Header.Get("Authorization"))
 	if len(authorization) != 2 || !strings.EqualFold(authorization[0], "Bearer") {
 		writeOIDCError(w, http.StatusUnauthorized, "invalid_token")
@@ -576,6 +580,24 @@ func verifyOIDCClientSecret(client *OIDCClient, secret string) bool {
 
 func stableOIDCSubject(user *User) string {
 	return user.ID
+}
+
+func validOIDCScope(scope string) bool {
+	scopes := strings.Fields(scope)
+	if len(scopes) == 0 || !hasOIDCScope(scope, "openid") {
+		return false
+	}
+	seen := make(map[string]bool, len(scopes))
+	for _, item := range scopes {
+		if item != "openid" && item != "profile" && item != "email" {
+			return false
+		}
+		if seen[item] {
+			return false
+		}
+		seen[item] = true
+	}
+	return true
 }
 
 func hasOIDCScope(scope, target string) bool {
