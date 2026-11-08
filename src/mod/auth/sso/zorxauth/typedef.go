@@ -112,6 +112,7 @@ type AuthRouter struct {
 	gatewayServer       *GatewayServer
 	oidcClientMutex     sync.Mutex // Serializes OIDC client registration and proxy association checks
 	userMutationMutex   sync.Mutex // Serializes complete user read-modify-write operations
+	sessionLifecycleMutex sync.Mutex // Serializes session issuance and account-wide revocation
 	oidc                *oidcProvider
 
 	/* Group Policies */
