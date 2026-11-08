@@ -140,6 +140,8 @@ func (gs *GatewayServer) handleChangePassword(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// A password change revokes every existing session and pending authentication flow.
+	gs.router.invalidateUserSessions(u.Username)
 	utils.SendOK(w)
 }
 
