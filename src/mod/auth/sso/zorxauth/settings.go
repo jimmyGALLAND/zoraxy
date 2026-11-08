@@ -3,6 +3,7 @@ package zorxauth
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"imuslab.com/zoraxy/mod/utils"
 )
@@ -102,8 +103,20 @@ func (ar *AuthRouter) handleSettingsPOST(w http.ResponseWriter, r *http.Request)
 	ar.Options.UseExpotentialBackoff = useExpotentialBackoff
 
 	// Save to database
+	previousIssuer := ar.OIDCIssuer()
+	if err := ar.Database.Write(DB_NAME, oidcIssuerOption, strings.TrimRight(ssoRedirectURL, "/")); err != nil {
+		utils.SendErrorResponse(w, "Failed to save OIDC issuer")
+		return
+	}
+
 	err = ar.Database.Write(DB_NAME, "options", ar.Options)
 	if err != nil {
+		// Restore the previous issuer if the main settings could not be saved.
+		if previousIssuer == "" {
+			_ = ar.Database.Delete(DB_NAME, oidcIssuerOption)
+		} else {
+			_ = ar.Database.Write(DB_NAME, oidcIssuerOption, previousIssuer)
+		}
 		utils.SendErrorResponse(w, "Failed to save settings")
 		return
 	}
@@ -124,8 +137,15 @@ func (ar *AuthRouter) handleSettingsDELETE(w http.ResponseWriter, r *http.Reques
 	ar.Options.RateLimitPerIp = defaultOpts.RateLimitPerIp
 	ar.Options.UseExpotentialBackoff = defaultOpts.UseExpotentialBackoff
 
-	// Delete from database
-	ar.Database.Delete(DB_NAME, "options")
+	// Delete the stored issuer as well; OIDC will remain unconfigured until a new SSO URL is set.
+	if err := ar.Database.Delete(DB_NAME, "options"); err != nil {
+		utils.SendErrorResponse(w, "Failed to reset settings")
+		return
+	}
+	if err := ar.Database.Delete(DB_NAME, oidcIssuerOption); err != nil {
+		utils.SendErrorResponse(w, "Failed to reset OIDC issuer")
+		return
+	}
 
 	if ar.Logger != nil {
 		ar.Logger.PrintAndLog("zorxauth", "ZorxAuth settings reset to defaults", nil)
