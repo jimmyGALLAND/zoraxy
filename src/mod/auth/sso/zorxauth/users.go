@@ -240,6 +240,39 @@ func (ar *AuthRouter) saveUser(user *User, previousUsername string) error {
 	return nil
 }
 
+
+ // updateUser serializes a complete user read-modify-write operation and always
+ // applies the mutation to the latest persisted account record.
+func (ar *AuthRouter) updateUser(username string, update func(*User) error) (*User, error) {
+	if update == nil {
+		return nil, errors.New("user update function is nil")
+	}
+
+	ar.userMutationMutex.Lock()
+	defer ar.userMutationMutex.Unlock()
+
+	user, err := ar.getUserByUsername(username)
+	if err != nil {
+		return nil, err
+	}
+	previousUsername := user.Username
+
+	if err := update(user); err != nil {
+		return nil, err
+	}
+
+	if !strings.EqualFold(previousUsername, user.Username) {
+		if _, err := ar.getUserByUsername(user.Username); err == nil {
+			return nil, errors.New("new username already exists")
+		}
+	}
+
+	if err := ar.saveUser(user, previousUsername); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 func (ar *AuthRouter) HandleUsersList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		utils.SendErrorResponse(w, "method not allowed")
