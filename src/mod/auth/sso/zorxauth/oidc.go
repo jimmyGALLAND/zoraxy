@@ -386,25 +386,49 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !hasBasicAuth {
-		clientID, secret = r.PostForm.Get("client_id"), r.PostForm.Get("client_secret")
-	} else if r.PostForm.Get("client_id") != "" || r.PostForm.Get("client_secret") != "" {
-		writeOIDCError(w, http.StatusBadRequest, "invalid_request")
-		return
+		var clientIDOK, secretOK bool
+		clientID, clientIDOK = singleOIDCFormValue(r.PostForm, "client_id")
+		secret, secretOK = singleOIDCFormValue(r.PostForm, "client_secret")
+		if !clientIDOK || !secretOK {
+			writeOIDCError(w, http.StatusUnauthorized, "invalid_client")
+			return
+		}
+	} else {
+		if _, exists := r.PostForm["client_id"]; exists {
+			writeOIDCError(w, http.StatusBadRequest, "invalid_request")
+			return
+		}
+		if _, exists := r.PostForm["client_secret"]; exists {
+			writeOIDCError(w, http.StatusBadRequest, "invalid_request")
+			return
+		}
 	}
 	client, err := p.loadClient(clientID)
 	if err != nil || !verifyOIDCClientSecret(client, secret) {
 		writeOIDCError(w, http.StatusUnauthorized, "invalid_client")
 		return
 	}
-	if r.PostForm.Get("grant_type") != "authorization_code" {
+	grantType, grantTypeOK := singleOIDCFormValue(r.PostForm, "grant_type")
+	if !grantTypeOK {
+		writeOIDCError(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	if grantType != "authorization_code" {
 		writeOIDCError(w, http.StatusBadRequest, "unsupported_grant_type")
 		return
 	}
+	authorizationCode, codeOK := singleOIDCFormValue(r.PostForm, "code")
+	redirectURI, redirectOK := singleOIDCFormValue(r.PostForm, "redirect_uri")
+	codeVerifier, verifierOK := singleOIDCFormValue(r.PostForm, "code_verifier")
+	if !codeOK || !redirectOK || !verifierOK {
+		writeOIDCError(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
 	code, err := p.consumeAuthorizationCode(
-		r.PostForm.Get("code"),
+		authorizationCode,
 		client.ID,
-		r.PostForm.Get("redirect_uri"),
-		r.PostForm.Get("code_verifier"),
+		redirectURI,
+		codeVerifier,
 	)
 	if err != nil {
 		writeOIDCError(w, http.StatusBadRequest, "invalid_grant")
@@ -447,6 +471,15 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+
+// singleOIDCFormValue accepts exactly one non-empty value for a token request parameter.
+func singleOIDCFormValue(values url.Values, name string) (string, bool) {
+	items, exists := values[name]
+	if !exists || len(items) != 1 || items[0] == "" {
+		return "", false
+	}
+	return items[0], true
+}
 
 func (p *oidcProvider) consumeAuthorizationCode(codeValue, clientID, redirectURI, verifier string) (*oidcAuthorizationCode, error) {
 	value, exists := p.codes.LoadAndDelete(codeValue)
