@@ -273,6 +273,14 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	// Do not allow an authorization request received on an arbitrary Host header
+	// to be treated as a trusted redirect back to the configured issuer.
+	issuer, err := url.Parse(p.router.OIDCIssuer())
+	if err != nil || issuer.Scheme != "https" || issuer.Host == "" ||
+		!strings.EqualFold(issuer.Host, r.Host) || requestScheme(r) != "https" {
+		http.Error(w, "request does not match the configured OIDC issuer", http.StatusMisdirectedRequest)
+		return
+	}
 	q := r.URL.Query()
 	client, err := p.loadClient(q.Get("client_id"))
 	if err != nil {
