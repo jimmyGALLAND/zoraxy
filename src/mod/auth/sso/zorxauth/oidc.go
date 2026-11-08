@@ -132,6 +132,12 @@ func (ar *AuthRouter) isOIDCAuthorizeRedirect(rawURL string) bool {
 		target.EscapedPath() == "/oidc/authorize"
 }
 
+func validOIDCIssuer(rawIssuer string) bool {
+	issuer, err := url.Parse(rawIssuer)
+	return err == nil && issuer.Scheme == "https" && issuer.Host != "" &&
+		issuer.User == nil && issuer.RawQuery == "" && issuer.Fragment == "" && !issuer.Opaque
+}
+
 func (ar *AuthRouter) OIDCIssuer() string {
 	var issuer string
 	if ar.Database != nil && ar.Database.KeyExists(DB_NAME, oidcIssuerOption) {
@@ -247,9 +253,13 @@ func (p *oidcProvider) loadClient(clientID string) (*OIDCClient, error) {
 }
 
 func (p *oidcProvider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	issuer := p.router.OIDCIssuer()
-	if issuer == "" {
-		http.Error(w, "OIDC issuer is not configured", http.StatusServiceUnavailable)
+	if !validOIDCIssuer(issuer) {
+		http.Error(w, "OIDC issuer is not configured or is invalid", http.StatusServiceUnavailable)
 		return
 	}
 	writeOIDCJSON(w, http.StatusOK, map[string]interface{}{
@@ -265,6 +275,10 @@ func (p *oidcProvider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *oidcProvider) handleJWKS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	pub := &p.key.PrivateKey.PublicKey
 	writeOIDCJSON(w, http.StatusOK, map[string]interface{}{"keys": []interface{}{map[string]interface{}{
 		"kty": "RSA", "use": "sig", "alg": "RS256", "kid": p.key.KeyID,
@@ -280,8 +294,9 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	// Do not allow an authorization request received on an arbitrary Host header
 	// to be treated as a trusted redirect back to the configured issuer.
-	issuer, err := url.Parse(p.router.OIDCIssuer())
-	if err != nil || issuer.Scheme != "https" || issuer.Host == "" ||
+	issuerValue := p.router.OIDCIssuer()
+	issuer, err := url.Parse(issuerValue)
+	if !validOIDCIssuer(issuerValue) || err != nil ||
 		!strings.EqualFold(issuer.Host, r.Host) || requestScheme(r) != "https" {
 		http.Error(w, "request does not match the configured OIDC issuer", http.StatusMisdirectedRequest)
 		return
