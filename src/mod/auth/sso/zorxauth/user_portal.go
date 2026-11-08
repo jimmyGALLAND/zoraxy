@@ -218,7 +218,7 @@ func (gs *GatewayServer) handleEnableTOTP(w http.ResponseWriter, r *http.Request
 	}
 
 	pending, ok := pendingObj.(*PendingTOTPSetup)
-	if !ok || time.Now().After(pending.Expiry) {
+	if !ok || pending == nil || time.Now().After(pending.Expiry) {
 		gs.router.pendingTOTPSetup.Delete(username)
 		utils.SendErrorResponse(w, "2FA setup session expired; please start setup again")
 		return
