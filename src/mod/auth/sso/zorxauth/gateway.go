@@ -206,6 +206,7 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 		if redirectURL == "" {
 			redirectURL = "/user" // default to user portal if redirect URL is missing
 			http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+			return
 		}
 
 		host := ""
