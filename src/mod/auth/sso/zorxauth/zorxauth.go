@@ -62,6 +62,11 @@ func NewAuthRouter(db *database.Database, log *logger.Logger) *AuthRouter {
 		rateLimitResetStop: make(chan bool, 1),
 	}
 
+	// Initialize the OIDC provider and its persistent signing key.
+	if err := authRouter.initOIDCProvider(); err != nil && log != nil {
+		log.PrintAndLog("zorxauth", "Failed to initialize OIDC provider: "+err.Error(), err)
+	}
+
 	// Load browser sessions from database
 	authRouter.loadBrowserSessions()
 
