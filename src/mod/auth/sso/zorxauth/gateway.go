@@ -244,7 +244,22 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		if gs.router.ValidateUserAccessToHost(username, host) {
+		gs.router.sessionLifecycleMutex.Lock()
+		defer gs.router.sessionLifecycleMutex.Unlock()
+		// The session may have been revoked after the initial authentication check.
+		sessionStillActive := false
+		cookie, cookieErr := r.Cookie(gs.router.Options.CookieName)
+		if cookieErr == nil && cookie.Value != "" {
+			if sessionData, exists := gs.router.gatewaySessionStore.Load(cookie.Value); exists {
+				if currentSession, ok := sessionData.(*GatewaySession); ok && currentSession != nil &&
+					strings.EqualFold(currentSession.Username, username) && time.Now().Before(currentSession.Expiry) {
+					if _, userErr := gs.router.getUserByUsername(username); userErr == nil {
+						sessionStillActive = true
+					}
+				}
+			}
+		}
+		if sessionStillActive && gs.router.ValidateUserAccessToHost(username, host) {
 			// Renew the gateway session expiry time since the user is actively using it
 			rememberMe := false
 			cookie, cookieErr := r.Cookie(gs.router.Options.CookieName)
