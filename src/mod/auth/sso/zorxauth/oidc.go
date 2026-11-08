@@ -371,18 +371,16 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, loginURL, http.StatusSeeOther)
 		return
 	}
-	user, err := p.router.getUserByUsername(username)
-	if err != nil {
-		http.Error(w, "user session is invalid", http.StatusUnauthorized)
-		return
-	}
 	if client.ProxyDomain != "" && !p.router.ValidateUserAccessToHost(username, client.ProxyDomain) {
 		http.Error(w, "access denied", http.StatusForbidden)
 		return
 	}
-	// Persist the user record only after authorization succeeds, so legacy
-	// records receive a stable subject ID only for an allowed OIDC flow.
-	if err := p.router.saveUser(user, user.Username); err != nil {
+	// Persist a stable subject using the latest account record, without
+	// overwriting profile or credential changes made concurrently.
+	user, err := p.router.updateUser(username, func(user *User) error {
+		return nil
+	})
+	if err != nil {
 		http.Error(w, "unable to persist user subject", http.StatusInternalServerError)
 		return
 	}
