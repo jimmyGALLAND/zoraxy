@@ -659,7 +659,7 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 	}
 
 	// Look up the pending session
-	pendingObj, exists := gs.router.pendingTOTPSessions.Load(totpToken)
+	pendingObj, exists := gs.router.pendingTOTPSessions.LoadAndDelete(totpToken)
 	if !exists {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
@@ -681,9 +681,6 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 		})
 		return
 	}
-
-	// One-time use: consume the pending session immediately
-	gs.router.pendingTOTPSessions.Delete(totpToken)
 
 	// Fetch user and validate the TOTP code
 	u, err := gs.router.getUserByUsername(pending.Username)
