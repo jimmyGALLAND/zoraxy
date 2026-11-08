@@ -327,14 +327,14 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "user session is invalid", http.StatusUnauthorized)
 		return
 	}
-	// Persist the user record before issuing a token so legacy records receive
-	// a stable subject ID that can be resolved by the UserInfo endpoint.
-	if err := p.router.saveUser(user, user.Username); err != nil {
-		http.Error(w, "unable to persist user subject", http.StatusInternalServerError)
-		return
-	}
 	if client.ProxyDomain != "" && !p.router.ValidateUserAccessToHost(username, client.ProxyDomain) {
 		http.Error(w, "access denied", http.StatusForbidden)
+		return
+	}
+	// Persist the user record only after authorization succeeds, so legacy
+	// records receive a stable subject ID only for an allowed OIDC flow.
+	if err := p.router.saveUser(user, user.Username); err != nil {
+		http.Error(w, "unable to persist user subject", http.StatusInternalServerError)
 		return
 	}
 	codeBytes := make([]byte, 32)
