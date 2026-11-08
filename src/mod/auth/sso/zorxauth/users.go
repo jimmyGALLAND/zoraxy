@@ -404,6 +404,10 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 
 	if credentialsChanged {
 		ar.invalidateUserSessions(originalUsername)
+		if !strings.EqualFold(originalUsername, user.Username) {
+			// saveUser remaps pending SSO callbacks when a username changes.
+			ar.invalidateUserSessions(user.Username)
+		}
 	}
 
 	utils.SendOK(w)
