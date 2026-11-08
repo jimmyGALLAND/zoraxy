@@ -90,6 +90,31 @@ func TestIsOIDCAuthorizeRedirect(t *testing.T) {
 	}
 }
 
+func TestValidOIDCIssuer(t *testing.T) {
+	tests := []struct {
+		name   string
+		issuer string
+		want   bool
+	}{
+		{"https issuer", "https://auth.example.test", true},
+		{"https issuer with path", "https://auth.example.test/sso", true},
+		{"http issuer", "http://auth.example.test", false},
+		{"missing host", "https:///oidc", false},
+		{"userinfo", "https://user:pass@auth.example.test", false},
+		{"query string", "https://auth.example.test?tenant=one", false},
+		{"fragment", "https://auth.example.test#issuer", false},
+		{"relative issuer", "/auth", false},
+		{"opaque issuer", "https:auth.example.test", false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := validOIDCIssuer(test.issuer); got != test.want {
+				t.Fatalf("validOIDCIssuer(%q) = %v, want %v", test.issuer, got, test.want)
+			}
+		})
+	}
+}
+
 func TestValidOIDCScope(t *testing.T) {
 	tests := []struct {
 		scope string
