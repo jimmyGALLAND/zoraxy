@@ -28,7 +28,7 @@ func TestSingleOIDCFormValue(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got, ok := singleOIDCFormValue(test.values, test.key)
-				if got != test.want || ok != test.wantOK {
+			if got != test.want || ok != test.wantOK {
 				t.Fatalf("singleOIDCFormValue() = (%q, %v), want (%q, %v)", got, ok, test.want, test.wantOK)
 			}
 		})
