@@ -476,6 +476,12 @@ func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 		writeOIDCError(w, http.StatusUnauthorized, "invalid_token")
 		return
 	}
+	// Recheck the associated proxy authorization so access revocation takes
+	// effect for UserInfo requests even while a previously issued token is valid.
+	if client.ProxyDomain != "" && !p.router.ValidateUserAccessToHost(user.Username, client.ProxyDomain) {
+		writeOIDCError(w, http.StatusUnauthorized, "invalid_token")
+		return
+	}
 	response := map[string]interface{}{"sub": stableOIDCSubject(user)}
 	scope, _ := claims["scope"].(string)
 	if hasOIDCScope(scope, "profile") {
