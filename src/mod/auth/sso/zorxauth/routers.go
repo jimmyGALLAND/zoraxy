@@ -62,6 +62,12 @@ func (ar *AuthRouter) RequestIsAuthenticatedInSSO(w http.ResponseWriter, r *http
 	if time.Now().After(gatewaySession.Expiry) {
 		username := gatewaySession.Username
 
+		// Invalidate pending cross-domain SSO callbacks and OIDC authorization codes.
+		ar.deleteValidationCodesForUser(username)
+		if ar.oidc != nil {
+			ar.oidc.deleteAuthorizationCodesForUser(username)
+		}
+
 		// Delete the expired gateway session
 		ar.gatewaySessionStore.Delete(cookie.Value)
 
