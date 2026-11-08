@@ -135,7 +135,7 @@ func (ar *AuthRouter) isOIDCAuthorizeRedirect(rawURL string) bool {
 func validOIDCIssuer(rawIssuer string) bool {
 	issuer, err := url.Parse(rawIssuer)
 	return err == nil && issuer.Scheme == "https" && issuer.Host != "" &&
-		issuer.User == nil && issuer.RawQuery == "" && issuer.Fragment == "" && !issuer.Opaque
+		issuer.User == nil && issuer.RawQuery == "" && issuer.Fragment == "" && issuer.Opaque == ""
 }
 
 func (ar *AuthRouter) OIDCIssuer() string {
