@@ -117,6 +117,16 @@ func (ar *AuthRouter) generateValidationCodeForSession(sessionId string) string 
 	return validationCode
 }
 
+// deleteValidationCodesForUser invalidates pending cross-domain SSO callbacks for a user.
+func (ar *AuthRouter) deleteValidationCodesForUser(username string) {
+	ar.sessionIdStore.Range(func(key, value interface{}) bool {
+		if storedUsername, ok := value.(string); ok && storedUsername == username {
+			ar.sessionIdStore.Delete(key)
+		}
+		return true
+	})
+}
+
 // startLoginRateLimitTicker resets per-IP login attempt counters every minute.
 func (ar *AuthRouter) startLoginRateLimitTicker() {
 	ticker := time.NewTicker(time.Minute)
