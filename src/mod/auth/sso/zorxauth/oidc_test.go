@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"strings"
 	"testing"
@@ -171,5 +172,81 @@ func TestVerifyOIDCJWTClaims(t *testing.T) {
 				t.Fatalf("verifyJWT() error = %v, want success = %v", err, test.wantOK)
 			}
 		})
+	}
+}
+
+
+func TestConsumeOIDCAuthorizationCode(t *testing.T) {
+	verifier := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
+	digest := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(digest[:])
+
+	tests := []struct {
+		name      string
+		clientID  string
+		redirect  string
+		verifier  string
+		expiresAt time.Time
+		method    string
+		wantOK    bool
+	}{
+		{
+			name: "valid code", clientID: "client-1", redirect: "https://client.example.test/callback",
+			verifier: verifier, expiresAt: time.Now().Add(time.Minute), method: "S256", wantOK: true,
+		},
+		{
+			name: "expired code", clientID: "client-1", redirect: "https://client.example.test/callback",
+			verifier: verifier, expiresAt: time.Now().Add(-time.Second), method: "S256",
+		},
+		{
+			name: "wrong client", clientID: "client-2", redirect: "https://client.example.test/callback",
+			verifier: verifier, expiresAt: time.Now().Add(time.Minute), method: "S256",
+		},
+		{
+			name: "wrong redirect URI", clientID: "client-1", redirect: "https://attacker.example.test/callback",
+			verifier: verifier, expiresAt: time.Now().Add(time.Minute), method: "S256",
+		},
+		{
+			name: "wrong PKCE verifier", clientID: "client-1", redirect: "https://client.example.test/callback",
+			verifier: strings.Repeat("z", 50), expiresAt: time.Now().Add(time.Minute), method: "S256",
+		},
+		{
+			name: "unsupported PKCE method", clientID: "client-1", redirect: "https://client.example.test/callback",
+			verifier: verifier, expiresAt: time.Now().Add(time.Minute), method: "plain",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			provider := &oidcProvider{}
+			provider.codes.Store("one-time-code", &oidcAuthorizationCode{
+				ClientID: "client-1", RedirectURI: "https://client.example.test/callback",
+				CodeChallenge: challenge, CodeChallengeMethod: test.method, ExpiresAt: test.expiresAt,
+			})
+			_, err := provider.consumeAuthorizationCode("one-time-code", test.clientID, test.redirect, test.verifier)
+			if gotOK := err == nil; gotOK != test.wantOK {
+				t.Fatalf("consumeAuthorizationCode() error = %v, want success = %v", err, test.wantOK)
+			}
+			if _, exists := provider.codes.Load("one-time-code"); exists {
+				t.Fatal("authorization code must be consumed even when validation fails")
+			}
+		})
+	}
+}
+
+func TestOIDCAuthorizationCodeCannotBeReused(t *testing.T) {
+	verifier := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
+	digest := sha256.Sum256([]byte(verifier))
+	provider := &oidcProvider{}
+	provider.codes.Store("one-time-code", &oidcAuthorizationCode{
+		ClientID: "client-1", RedirectURI: "https://client.example.test/callback",
+		CodeChallenge: base64.RawURLEncoding.EncodeToString(digest[:]),
+		CodeChallengeMethod: "S256", ExpiresAt: time.Now().Add(time.Minute),
+	})
+
+	if _, err := provider.consumeAuthorizationCode("one-time-code", "client-1", "https://client.example.test/callback", verifier); err != nil {
+		t.Fatalf("first authorization code exchange failed: %v", err)
+	}
+	if _, err := provider.consumeAuthorizationCode("one-time-code", "client-1", "https://client.example.test/callback", verifier); err == nil {
+		t.Fatal("expected replayed authorization code to be rejected")
 	}
 }
