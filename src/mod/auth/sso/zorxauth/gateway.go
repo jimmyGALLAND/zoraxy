@@ -251,7 +251,7 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 			if cookieErr == nil && cookie.Value != "" {
 				// Load the existing gateway session
 				if sessionData, exists := gs.router.gatewaySessionStore.Load(cookie.Value); exists {
-					if gatewaySession, ok := sessionData.(*GatewaySession); ok {
+					if gatewaySession, ok := sessionData.(*GatewaySession); ok && gatewaySession != nil {
 						// Extend the session expiry time, keeping the "Remember Me"
 						// duration if the session was created with it
 						rememberMe = gatewaySession.RememberMe
