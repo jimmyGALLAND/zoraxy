@@ -260,8 +260,13 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 							renewDuration = gs.router.Options.CookieDurationRememberMe
 						}
 						newExpiry := time.Now().Add(time.Duration(renewDuration) * time.Second)
-						gatewaySession.Expiry = newExpiry
-						gs.router.gatewaySessionStore.Store(cookie.Value, gatewaySession)
+						// Store a new immutable value instead of mutating the shared session
+						// pointer, which may be read concurrently by authentication checks.
+						gs.router.gatewaySessionStore.Store(cookie.Value, &GatewaySession{
+							Username:   gatewaySession.Username,
+							Expiry:     newExpiry,
+							RememberMe: gatewaySession.RememberMe,
+						})
 					}
 				}
 			}
