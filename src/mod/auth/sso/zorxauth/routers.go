@@ -29,7 +29,7 @@ func (ar *AuthRouter) RequestIsAuthenticatedInHost(w http.ResponseWriter, r *htt
 
 	// Check if session has expired
 	browserSession, ok := sessionData.(*BrowserSession)
-	if !ok {
+	if !ok || browserSession == nil {
 		return false
 	}
 
@@ -54,7 +54,7 @@ func (ar *AuthRouter) RequestIsAuthenticatedInSSO(w http.ResponseWriter, r *http
 	}
 
 	gatewaySession, ok := sessionData.(*GatewaySession)
-	if !ok {
+	if !ok || gatewaySession == nil {
 		return false, ""
 	}
 
