@@ -12,6 +12,25 @@ import (
 	"time"
 )
 
+func TestDeleteValidationCodesForUser(t *testing.T) {
+	router := &AuthRouter{}
+	router.sessionIdStore.Store("code-user-a-1", "user-a")
+	router.sessionIdStore.Store("code-user-a-2", "user-a")
+	router.sessionIdStore.Store("code-user-b", "user-b")
+
+	router.deleteValidationCodesForUser("user-a")
+
+	if _, exists := router.sessionIdStore.Load("code-user-a-1"); exists {
+		t.Fatal("expected first pending validation code for user-a to be deleted")
+	}
+	if _, exists := router.sessionIdStore.Load("code-user-a-2"); exists {
+		t.Fatal("expected second pending validation code for user-a to be deleted")
+	}
+	if value, exists := router.sessionIdStore.Load("code-user-b"); !exists || value != "user-b" {
+		t.Fatal("expected validation code for user-b to remain")
+	}
+}
+
 func TestSingleOIDCFormValue(t *testing.T) {
 	tests := []struct {
 		name   string
