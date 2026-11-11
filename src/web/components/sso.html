@@ -413,7 +413,7 @@
 
     function loadOIDCReverseProxyDomains() {
         var $select = $('#oidcProxyDomain');
-        $.ajax({
+        $.cjax({
             url: '/api/proxy/list',
             method: 'POST',
             data: {type: 'host'},
