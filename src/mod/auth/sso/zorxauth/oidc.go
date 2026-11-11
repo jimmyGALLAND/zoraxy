@@ -156,22 +156,9 @@ func (ar *AuthRouter) RegisterOIDCClient(name, proxyDomain string, redirectURIs 
 	if name == "" || len(redirectURIs) == 0 {
 		return nil, "", errors.New("client name and at least one redirect URI are required")
 	}
-	normalizedRedirectURIs := make([]string, 0, len(redirectURIs))
-	seenRedirectURIs := make(map[string]struct{}, len(redirectURIs))
-	for _, rawURI := range redirectURIs {
-		rawURI = strings.TrimSpace(rawURI)
-		parsed, err := url.Parse(rawURI)
-		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
-			return nil, "", fmt.Errorf("invalid redirect URI: %s", rawURI)
-		}
-		if _, exists := seenRedirectURIs[rawURI]; exists {
-			continue
-		}
-		seenRedirectURIs[rawURI] = struct{}{}
-		normalizedRedirectURIs = append(normalizedRedirectURIs, rawURI)
-	}
-	if len(normalizedRedirectURIs) == 0 {
-		return nil, "", errors.New("at least one valid redirect URI is required")
+	normalizedRedirectURIs, err := normalizeOIDCRedirectURIs(redirectURIs)
+	if err != nil {
+		return nil, "", err
 	}
 	proxyDomain = strings.ToLower(strings.TrimSpace(proxyDomain))
 	ar.oidcClientMutex.Lock()
@@ -213,6 +200,44 @@ func (ar *AuthRouter) RegisterOIDCClient(name, proxyDomain string, redirectURIs 
 	return client, secret, nil
 }
 
+// normalizeOIDCRedirectURIs validates and deduplicates exact OIDC callback URIs.
+// HTTPS callbacks require an authority; native-app callbacks may use a private-use
+// URI scheme (for example app.immich:///oauth-callback).
+func normalizeOIDCRedirectURIs(redirectURIs []string) ([]string, error) {
+	normalized := make([]string, 0, len(redirectURIs))
+	seen := make(map[string]struct{}, len(redirectURIs))
+	for _, rawURI := range redirectURIs {
+		rawURI = strings.TrimSpace(rawURI)
+		parsed, err := url.Parse(rawURI)
+		scheme := strings.ToLower(parsedScheme(parsed))
+		validHTTPS := scheme == "https" && parsed != nil && parsed.Host != "" &&
+			parsed.User == nil && parsed.Opaque == ""
+		validCustom := parsed != nil && scheme != "" && scheme != "http" && scheme != "https" &&
+			parsed.Host == "" && parsed.Opaque == "" && parsed.Path != "" &&
+			parsed.User == nil && parsed.Fragment == ""
+		if err != nil || parsed == nil || parsed.Scheme == "" ||
+			(parsed.Fragment != "" || parsed.User != nil) || !(validHTTPS || validCustom) {
+			return nil, fmt.Errorf("invalid redirect URI: %s", rawURI)
+		}
+		if _, exists := seen[rawURI]; exists {
+			continue
+		}
+		seen[rawURI] = struct{}{}
+		normalized = append(normalized, rawURI)
+	}
+	if len(normalized) == 0 {
+		return nil, errors.New("at least one valid redirect URI is required")
+	}
+	return normalized, nil
+}
+
+func parsedScheme(parsed *url.URL) string {
+	if parsed == nil {
+		return ""
+	}
+	return parsed.Scheme
+}
+
 func (ar *AuthRouter) GetOIDCClients() ([]*OIDCClient, error) {
 	entries, err := ar.Database.ListTable(oidcClientsTable)
 	if err != nil {
@@ -230,6 +255,57 @@ func (ar *AuthRouter) GetOIDCClients() ([]*OIDCClient, error) {
 		}
 	}
 	return clients, nil
+}
+
+// UpdateOIDCClient updates editable client metadata without changing its ID or secret.
+func (ar *AuthRouter) UpdateOIDCClient(clientID, name, proxyDomain string, redirectURIs []string) (*OIDCClient, error) {
+	clientID = strings.TrimSpace(clientID)
+	name = strings.TrimSpace(name)
+	proxyDomain = strings.ToLower(strings.TrimSpace(proxyDomain))
+	if clientID == "" || name == "" {
+		return nil, errors.New("client_id and client name are required")
+	}
+	if len(name) > 120 {
+		return nil, errors.New("client name must be 120 characters or fewer")
+	}
+	normalizedRedirectURIs, err := normalizeOIDCRedirectURIs(redirectURIs)
+	if err != nil {
+		return nil, err
+	}
+
+	ar.oidcClientMutex.Lock()
+	defer ar.oidcClientMutex.Unlock()
+	if !ar.Database.KeyExists(oidcClientsTable, clientID) {
+		return nil, errors.New("OIDC client not found")
+	}
+	client := &OIDCClient{}
+	if err := ar.Database.Read(oidcClientsTable, clientID, client); err != nil {
+		return nil, err
+	}
+	if proxyDomain != "" {
+		entries, err := ar.Database.ListTable(oidcClientsTable)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if len(entry) == 0 || string(entry[0]) == clientID {
+				continue
+			}
+			existing := &OIDCClient{}
+			if err := ar.Database.Read(oidcClientsTable, string(entry[0]), existing); err == nil &&
+				strings.EqualFold(existing.ProxyDomain, proxyDomain) {
+				return nil, fmt.Errorf("reverse proxy %s already has an OIDC client", proxyDomain)
+			}
+		}
+	}
+	client.Name = name
+	client.ProxyDomain = proxyDomain
+	client.RedirectURIs = normalizedRedirectURIs
+	if err := ar.Database.Write(oidcClientsTable, clientID, client); err != nil {
+		return nil, err
+	}
+	client.SecretHash = ""
+	return client, nil
 }
 
 func (ar *AuthRouter) DeleteOIDCClient(clientID string) error {
