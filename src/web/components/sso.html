@@ -485,7 +485,7 @@
 
     $('#zorxAuthOIDCCreateForm').on('submit', function(event) {
         event.preventDefault();
-        var redirectURIs = ($('#oidcRedirectURIs').val() || '').split(/\\r?\\n/).map(function(uri) {
+        var redirectURIs = ($('#oidcRedirectURIs').val() || '').split(/\r?\n/).map(function(uri) {
             return uri.trim();
         }).filter(Boolean);
         if (redirectURIs.length === 0) {
