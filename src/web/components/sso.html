@@ -582,7 +582,8 @@
                 });
                 $('#oidcEditClientID').val(client.client_id);
                 $('#oidcEditClientName').val(client.name || '');
-                $('#oidcEditProxyDomain').val(client.proxy_domain || '').dropdown('refresh');
+                $proxy.dropdown();
+                $proxy.dropdown('set selected', client.proxy_domain || '');
                 $('#oidcEditRedirectURIs').val((client.redirect_uris || []).join('\n'));
                 $('#oidcClientEditModal').modal({ closable: false }).modal('show');
             },
