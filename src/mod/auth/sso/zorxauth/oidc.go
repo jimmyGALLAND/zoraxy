@@ -628,6 +628,12 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 		idClaims["email"] = user.Email
 		idClaims["email_verified"] = false
 	}
+	for name, raw := range user.OIDCCustomClaims {
+		var value interface{}
+		if json.Unmarshal(raw, &value) == nil {
+			idClaims[name] = value
+		}
+	}
 	idToken, err := p.signJWT(idClaims)
 	if err != nil {
 		writeOIDCError(w, http.StatusInternalServerError, "server_error")
@@ -727,6 +733,12 @@ func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	if hasOIDCScope(scope, "email") && user.Email != "" {
 		response["email"] = user.Email
 		response["email_verified"] = false
+	}
+	for name, raw := range user.OIDCCustomClaims {
+		var value interface{}
+		if json.Unmarshal(raw, &value) == nil {
+			response[name] = value
+		}
 	}
 	writeOIDCJSON(w, http.StatusOK, response)
 }
