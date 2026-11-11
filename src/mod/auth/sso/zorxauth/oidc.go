@@ -330,11 +330,21 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	// Reject duplicated authorization parameters instead of silently accepting
 	// the first value returned by url.Values.Get.
-	for _, name := range []string{"client_id", "redirect_uri", "response_type", "scope", "state", "code_challenge", "code_challenge_method"} {
+	for _, name := range []string{"client_id", "redirect_uri", "response_type", "scope", "state"} {
 		if len(q[name]) != 1 {
 			http.Error(w, "missing or duplicated authorization parameter: "+name, http.StatusBadRequest)
 			return
 		}
+	}
+	// PKCE is optional for confidential clients, but challenge and method must
+	// be supplied together and must use S256 when present.
+	challengeValues, hasChallenge := q["code_challenge"]
+	methodValues, hasChallengeMethod := q["code_challenge_method"]
+	if hasChallenge != hasChallengeMethod ||
+		(hasChallenge && (len(challengeValues) != 1 || len(methodValues) != 1 ||
+			!validOIDCCodeChallenge(challengeValues[0]) || methodValues[0] != "S256")) {
+		http.Error(w, "invalid PKCE parameters: code_challenge and S256 code_challenge_method must be supplied together", http.StatusBadRequest)
+		return
 	}
 	// The OIDC nonce parameter is optional in the authorization code flow.
 	// If supplied, it must occur exactly once and contain a non-empty value.
@@ -363,8 +373,8 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported authorization request", http.StatusBadRequest)
 		return
 	}
-	if q.Get("state") == "" || q.Get("code_challenge_method") != "S256" || !validOIDCCodeChallenge(q.Get("code_challenge")) {
-		http.Error(w, "state and a valid PKCE S256 challenge are required", http.StatusBadRequest)
+	if q.Get("state") == "" {
+		http.Error(w, "state is required", http.StatusBadRequest)
 		return
 	}
 	if p.router.OIDCIssuer() == "" {
@@ -423,7 +433,7 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	p.codes.Store(code, &oidcAuthorizationCode{
 		ClientID: client.ID, Username: user.Username, RedirectURI: redirectURI, Nonce: q.Get("nonce"),
 		Scope: q.Get("scope"), CodeChallenge: q.Get("code_challenge"),
-		CodeChallengeMethod: "S256", ExpiresAt: time.Now().Add(oidcCodeLifetime),
+		CodeChallengeMethod: q.Get("code_challenge_method"), ExpiresAt: time.Now().Add(oidcCodeLifetime),
 	})
 	time.AfterFunc(oidcCodeLifetime, func() { p.codes.Delete(code) })
 	callback, _ := url.Parse(redirectURI)
@@ -488,8 +498,15 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 	authorizationCode, codeOK := singleOIDCFormValue(r.PostForm, "code")
 	redirectURI, redirectOK := singleOIDCFormValue(r.PostForm, "redirect_uri")
-	codeVerifier, verifierOK := singleOIDCFormValue(r.PostForm, "code_verifier")
-	if !codeOK || !redirectOK || !verifierOK {
+	codeVerifier := ""
+	if verifierValues, exists := r.PostForm["code_verifier"]; exists {
+		if len(verifierValues) != 1 || verifierValues[0] == "" {
+			writeOIDCError(w, http.StatusBadRequest, "invalid_request")
+			return
+		}
+		codeVerifier = verifierValues[0]
+	}
+	if !codeOK || !redirectOK {
 		writeOIDCError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
@@ -566,14 +583,20 @@ func (p *oidcProvider) consumeAuthorizationCode(codeValue, clientID, redirectURI
 		return nil, errors.New("invalid authorization code")
 	}
 	if !time.Now().Before(code.ExpiresAt) || code.ClientID != clientID ||
-		code.RedirectURI != redirectURI || code.CodeChallengeMethod != "S256" ||
-		!validOIDCCodeVerifier(verifier) {
+		code.RedirectURI != redirectURI {
 		return nil, errors.New("authorization code validation failed")
 	}
-	challenge := sha256.Sum256([]byte(verifier))
-	actualChallenge := base64.RawURLEncoding.EncodeToString(challenge[:])
-	if subtle.ConstantTimeCompare([]byte(actualChallenge), []byte(code.CodeChallenge)) != 1 {
-		return nil, errors.New("PKCE verification failed")
+	if code.CodeChallenge != "" {
+		if code.CodeChallengeMethod != "S256" || !validOIDCCodeVerifier(verifier) {
+			return nil, errors.New("PKCE verifier is required")
+		}
+		challenge := sha256.Sum256([]byte(verifier))
+		actualChallenge := base64.RawURLEncoding.EncodeToString(challenge[:])
+		if subtle.ConstantTimeCompare([]byte(actualChallenge), []byte(code.CodeChallenge)) != 1 {
+			return nil, errors.New("PKCE verification failed")
+		}
+	} else if verifier != "" {
+		return nil, errors.New("unexpected PKCE verifier")
 	}
 	return code, nil
 }
