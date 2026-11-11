@@ -23,7 +23,8 @@ type UserResponse struct {
 	UseGroupPolicy bool     `json:"useGroupPolicy"` //Use group policy instead of AllowedHosts for checking access
 	GroupID        string   `json:"groupId"`        //GroupID is the group policy ID that the user belongs to
 	AllowedHosts   []string `json:"allowedHosts"`
-	Enable2FA      bool     `json:"enable2FA"`
+	Enable2FA      bool                       `json:"enable2FA"`
+	OIDCCustomClaims map[string]json.RawMessage `json:"oidcCustomClaims,omitempty"`
 }
 
 func normalizeUsername(username string) string {
@@ -54,6 +55,7 @@ func userToResponse(user *User) *UserResponse {
 		GroupID:        user.GroupID,
 		AllowedHosts:   user.AllowedHosts,
 		Enable2FA:      user.Enable2FA,
+		OIDCCustomClaims: user.OIDCCustomClaims,
 	}
 }
 
@@ -364,6 +366,33 @@ func (ar *AuthRouter) HandleUserCreate(w http.ResponseWriter, r *http.Request) {
 	utils.SendOK(w)
 }
 
+var reservedOIDCCustomClaims = map[string]struct{}{
+	"iss": {}, "sub": {}, "aud": {}, "exp": {}, "iat": {}, "nbf": {}, "jti": {},
+	"nonce": {}, "azp": {}, "auth_time": {}, "at_hash": {}, "c_hash": {},
+	"token_use": {}, "scope": {}, "email": {}, "email_verified": {},
+	"preferred_username": {},
+}
+
+func parseOIDCCustomClaims(raw string) (map[string]json.RawMessage, error) {
+	if len(raw) > 32*1024 {
+		return nil, errors.New("OIDC custom claims must not exceed 32 KiB")
+	}
+	claims := make(map[string]json.RawMessage)
+	if err := json.Unmarshal([]byte(raw), &claims); err != nil || claims == nil {
+		return nil, errors.New("OIDC custom claims must be a valid JSON object")
+	}
+	for name := range claims {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return nil, errors.New("OIDC custom claim names cannot be empty")
+		}
+		if _, reserved := reservedOIDCCustomClaims[name]; reserved {
+			return nil, errors.New("OIDC custom claim name is reserved: " + name)
+		}
+	}
+	return claims, nil
+}
+
 func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		utils.SendErrorResponse(w, "method not allowed")
@@ -403,6 +432,14 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 
 		if _, ok := r.Form["allowedHosts"]; ok {
 			user.AllowedHosts = normalizeAllowedHosts(r.FormValue("allowedHosts"))
+		}
+
+		if rawClaims, ok := r.Form["oidcCustomClaims"]; ok {
+			claims, err := parseOIDCCustomClaims(r.FormValue("oidcCustomClaims"))
+			if err != nil {
+				return err
+			}
+			user.OIDCCustomClaims = claims
 		}
 
 		if _, ok := r.Form["useGroupPolicy"]; ok {
