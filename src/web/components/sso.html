@@ -288,7 +288,7 @@
                     <div class="field">
                         <label for="oidcRedirectURIs">Allowed redirect URIs</label>
                         <textarea id="oidcRedirectURIs" rows="3" placeholder="https://app.example.com/oidc/callback" required></textarea>
-                        <small>One exact HTTPS redirect URI per line. These values are matched exactly during authorization.</small>
+                        <small>One exact URI per line. HTTPS callbacks and native-app custom schemes such as app.immich:///oauth-callback are supported. Values are matched exactly during authorization.</small>
                     </div>
                     <button class="ui primary button" type="submit"><i class="plus icon"></i> Create OIDC client</button>
                 </form>
@@ -302,6 +302,33 @@
                 </div>
                 <h4>Registered clients</h4>
                 <div id="oidcClientsList"><div class="ui active inline loader"></div></div>
+                <div class="ui modal" id="oidcClientEditModal">
+                    <div class="header">Edit OIDC client</div>
+                    <div class="content">
+                        <form class="ui form" id="oidcClientEditForm">
+                            <input type="hidden" id="oidcEditClientID">
+                            <div class="field">
+                                <label for="oidcEditClientName">Client name</label>
+                                <input id="oidcEditClientName" type="text" maxlength="120" required>
+                            </div>
+                            <div class="field">
+                                <label for="oidcEditProxyDomain">Reverse proxy domain (optional)</label>
+                                <select id="oidcEditProxyDomain" class="ui dropdown">
+                                    <option value="">No proxy association</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="oidcEditRedirectURIs">Allowed redirect URIs</label>
+                                <textarea id="oidcEditRedirectURIs" rows="5" required></textarea>
+                                <small>One exact URI per line. HTTPS callbacks and native-app custom schemes such as app.immich:///oauth-callback are supported.</small>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="actions">
+                        <button class="ui basic button" type="button" id="oidcEditCancel">Cancel</button>
+                        <button class="ui primary button" type="submit" form="oidcClientEditForm" id="oidcEditSave">Save changes</button>
+                    </div>
+                </div>
             </section>
             <div class="ui divider"></div>
             <!-- SSO Settings -->
@@ -471,10 +498,12 @@
                     var proxy = client.proxy_domain ? escapeOIDCHtml(client.proxy_domain) : '<em>Not associated</em>';
                     return '<tr><td>' + escapeOIDCHtml(client.name) + '</td><td><code>' +
                         escapeOIDCHtml(client.client_id) + '</code></td><td>' + proxy +
-                        '</td><td>' + redirects + '</td><td><button class="ui basic red mini button oidcDeleteClient" data-client-id="' +
+                        '</td><td>' + redirects + '</td><td><button class="ui basic mini button oidcEditClient" data-client-id="' +
+                        escapeOIDCHtml(client.client_id) + '"><i class="edit icon"></i> Edit</button> ' +
+                        '<button class="ui basic red mini button oidcDeleteClient" data-client-id="' +
                         escapeOIDCHtml(client.client_id) + '"><i class="trash icon"></i> Delete</button></td></tr>';
                 }).join('');
-                $('#oidcClientsList').html('<table class="ui celled compact table"><thead><tr><th>Name</th><th>Client ID</th><th>Reverse proxy</th><th>Redirect URIs</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>');
+                $('#oidcClientsList').html('<table class="ui celled compact table"><thead><tr><th>Name</th><th>Client ID</th><th>Reverse proxy</th><th>Redirect URIs</th><th>Actions</th></tr></thead><tbody>' + rows + '</tbody></table>');
             },
             error: function(xhr) {
                 $('#oidcClientsList').html('<div class="ui negative message">Unable to load OIDC clients: ' +
@@ -532,6 +561,72 @@
             $('#oidcNewClientSecret').trigger('focus').trigger('select');
             msgbox('Select and copy the secret manually', false);
         }
+    });
+
+    $('#oidcClientsList').on('click', '.oidcEditClient', function() {
+        var clientID = $(this).attr('data-client-id');
+        $.ajax({
+            url: '/api/sso/zorxauth/oidc/clients',
+            method: 'GET',
+            dataType: 'json',
+            success: function(data) {
+                var client = (data.clients || []).find(function(item) { return item.client_id === clientID; });
+                if (!client) {
+                    msgbox('OIDC client not found', false);
+                    return;
+                }
+                var $proxy = $('#oidcEditProxyDomain');
+                $proxy.empty().append($('<option>').val('').text('No proxy association'));
+                $('#oidcProxyDomain option').each(function() {
+                    if ($(this).val()) $proxy.append($(this).clone());
+                });
+                $('#oidcEditClientID').val(client.client_id);
+                $('#oidcEditClientName').val(client.name || '');
+                $('#oidcEditProxyDomain').val(client.proxy_domain || '').dropdown('refresh');
+                $('#oidcEditRedirectURIs').val((client.redirect_uris || []).join('\n'));
+                $('#oidcClientEditModal').modal({ closable: false }).modal('show');
+            },
+            error: function(xhr) {
+                var message = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Unable to load OIDC client';
+                msgbox(message, false);
+            }
+        });
+    });
+
+    $('#oidcEditCancel').on('click', function() {
+        $('#oidcClientEditModal').modal('hide');
+    });
+
+    $('#oidcClientEditForm').on('submit', function(event) {
+        event.preventDefault();
+        var redirectURIs = ($('#oidcEditRedirectURIs').val() || '').split(/\r?\n/).map(function(uri) {
+            return uri.trim();
+        }).filter(Boolean);
+        if (redirectURIs.length === 0) {
+            msgbox('Enter at least one redirect URI', false);
+            return;
+        }
+        $.cjax({
+            url: '/api/sso/zorxauth/oidc/clients',
+            method: 'PUT',
+            contentType: 'application/json',
+            dataType: 'json',
+            data: JSON.stringify({
+                client_id: $('#oidcEditClientID').val(),
+                name: $('#oidcEditClientName').val().trim(),
+                proxy_domain: $('#oidcEditProxyDomain').val() || '',
+                redirect_uris: redirectURIs
+            }),
+            success: function() {
+                $('#oidcClientEditModal').modal('hide');
+                msgbox('OIDC client updated', true);
+                loadZorxAuthOIDCClients();
+            },
+            error: function(xhr) {
+                var message = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Unable to update OIDC client';
+                msgbox(message, false);
+            }
+        });
     });
 
     $('#oidcClientsList').on('click', '.oidcDeleteClient', function() {
