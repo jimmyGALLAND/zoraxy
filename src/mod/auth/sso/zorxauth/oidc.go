@@ -367,13 +367,58 @@ func (p *oidcProvider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	writeOIDCJSON(w, http.StatusOK, map[string]interface{}{
 		"issuer": issuer, "authorization_endpoint": issuer + "/oidc/authorize",
 		"token_endpoint": issuer + "/oidc/token", "userinfo_endpoint": issuer + "/oidc/userinfo",
-		"jwks_uri": issuer + "/oidc/jwks", "response_types_supported": []string{"code"},
+		"jwks_uri": issuer + "/oidc/jwks", "end_session_endpoint": issuer + "/oidc/logout", "response_types_supported": []string{"code"},
 		"subject_types_supported": []string{"public"}, "id_token_signing_alg_values_supported": []string{"RS256"},
 		"scopes_supported": []string{"openid", "profile", "email"},
 		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"},
 		"code_challenge_methods_supported": []string{"S256"},
 		"grant_types_supported": []string{"authorization_code"},
 	})
+}
+
+// handleLogout supports Gitea's RP-initiated logout redirect without ending the
+// central Zoraxy Auth session. Gitea destroys its own local session before
+// redirecting the browser here. The registered client and its proxy domain are
+// checked before sending the browser to the configured portal landing page.
+func (p *oidcProvider) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	query := r.URL.Query()
+	clientIDs := query["client_id"]
+	redirectURIs := query["post_logout_redirect_uri"]
+	if len(clientIDs) != 1 || strings.TrimSpace(clientIDs[0]) == "" ||
+		len(redirectURIs) != 1 || strings.TrimSpace(redirectURIs[0]) == "" {
+		http.Error(w, "client_id and post_logout_redirect_uri are required exactly once", http.StatusBadRequest)
+		return
+	}
+
+	client, err := p.loadClient(clientIDs[0])
+	if err != nil {
+		http.Error(w, "unknown client", http.StatusBadRequest)
+		return
+	}
+	if client.ProxyDomain == "" {
+		http.Error(w, "OIDC client is not associated with a reverse proxy", http.StatusBadRequest)
+		return
+	}
+
+	postLogoutURI, err := url.Parse(redirectURIs[0])
+	if err != nil || postLogoutURI.Scheme != "https" || postLogoutURI.Host == "" ||
+		postLogoutURI.User != nil || postLogoutURI.Fragment != "" ||
+		!strings.EqualFold(postLogoutURI.Hostname(), client.ProxyDomain) ||
+		(postLogoutURI.Port() != "" && postLogoutURI.Port() != "443") ||
+		(postLogoutURI.Path != "" && postLogoutURI.Path != "/") ||
+		postLogoutURI.RawQuery != "" {
+		http.Error(w, "post_logout_redirect_uri does not match the registered reverse proxy", http.StatusBadRequest)
+		return
+	}
+
+	// Deliberately do not revoke the Zoraxy Auth gateway session here. This
+	// endpoint is used for Gitea's local logout handoff only.
+	http.Redirect(w, r, "https://portail.celjim.fr", http.StatusFound)
 }
 
 func (p *oidcProvider) handleJWKS(w http.ResponseWriter, r *http.Request) {
