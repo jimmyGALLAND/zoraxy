@@ -92,6 +92,14 @@
 							</div>
 						</div>
 					</div>
+					<div class="field">
+						<label>OIDC custom claims <small class="passwordHint">(JSON object)</small></label>
+						<textarea id="editOIDCCustomClaims" rows="6" spellcheck="false" placeholder='{
+  "immich_role": "admin",
+  "immich_quota": 500
+}'></textarea>
+						<small class="passwordHint">These claims are included in the ID token and UserInfo response for every OIDC client used by this account. Standard OIDC claims cannot be overridden.</small>
+					</div>
 					<div id="editHostsSection">
 					<div class="field">
 						<label>Allowed Hosts <small class="passwordHint">(blank = allow all)</small></label>
@@ -428,7 +436,7 @@
                         accessDisplay = '<span style="opacity:0.5;">all hosts</span>';
                     }
                     const emailDisplay = escapeHtml(user.email) || '<span style="opacity:0.5;">—</span>';
-                    body.append(`<tr class="userRow" data-username="${escapeHtml(user.username)}" data-email="${escapeHtml(user.email)}" data-allowedhosts="${escapeHtml(normalizeHostsForInput(user.allowedHosts))}" data-usegrouppolicy="${user.useGroupPolicy ? '1' : '0'}" data-groupid="${escapeHtml(user.groupId || '')}" data-enable2fa="${user.enable2FA ? '1' : '0'}">
+                    body.append(`<tr class="userRow" data-username="${escapeHtml(user.username)}" data-email="${escapeHtml(user.email)}" data-allowedhosts="${escapeHtml(normalizeHostsForInput(user.allowedHosts))}" data-usegrouppolicy="${user.useGroupPolicy ? '1' : '0'}" data-groupid="${escapeHtml(user.groupId || '')}" data-enable2fa="${user.enable2FA ? '1' : '0'}" data-oidccustomclaims="${escapeHtml(JSON.stringify(user.oidcCustomClaims || {}))}">
                         <td>${escapeHtml(user.username)}</td>
                         <td>${emailDisplay}</td>
                         <td>${accessDisplay}</td>
@@ -447,11 +455,14 @@
 				const allowedHosts = row.attr('data-allowedhosts');
 				const useGroupPolicy = row.attr('data-usegrouppolicy') === '1';
 				const groupId = row.attr('data-groupid') || '';
+				let customClaims = {};
+				try { customClaims = JSON.parse(row.attr('data-oidccustomclaims') || '{}'); } catch (e) { customClaims = {}; }
 
 				$('#editOriginalUsername').val(username);
 				$('#editUsername').val(username);
 				$('#editEmail').val(email);
 				$('#editPassword').val('');
+				$('#editOIDCCustomClaims').val(JSON.stringify(customClaims, null, 2));
 				populateHostTable('editHostsTable', allowedHosts);
 				$('#editUsernameLabel').text(username);
 
@@ -531,7 +542,8 @@
 						password: password,
 						allowedHosts: allowedHosts,
 						useGroupPolicy: useGroupPolicy,
-						groupId: groupId
+						groupId: groupId,
+						oidcCustomClaims: JSON.stringify(oidcCustomClaims)
 					},
 					success: function(data){
 						if (data.error !== undefined){
@@ -559,6 +571,14 @@
 				const password = $('#editPassword').val();
 				const useGroupPolicy = $('#editUseGroupPolicy').is(':checked');
 				const groupId = useGroupPolicy ? $('#editGroupId').val() : '';
+				let oidcCustomClaims;
+				try {
+					oidcCustomClaims = JSON.parse($('#editOIDCCustomClaims').val() || '{}');
+					if (!oidcCustomClaims || Array.isArray(oidcCustomClaims) || typeof oidcCustomClaims !== 'object') throw new Error('Expected a JSON object');
+				} catch (e) {
+					notify('OIDC custom claims must be a valid JSON object', false);
+					return;
+				}
 
 				if (newUsername === ''){
 					notify('Username cannot be empty', false);
