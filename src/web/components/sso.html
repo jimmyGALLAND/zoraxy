@@ -446,7 +446,7 @@
             msgbox('Enter at least one redirect URI', false);
             return;
         }
-        $.ajax({
+        $.cjax({
             url: '/api/sso/zorxauth/oidc/clients',
             method: 'POST',
             contentType: 'application/json',
@@ -489,7 +489,7 @@
     $('#oidcClientsList').on('click', '.oidcDeleteClient', function() {
         var clientID = $(this).attr('data-client-id');
         if (!clientID || !confirm('Delete this OIDC client? Existing integrations using it will stop working.')) return;
-        $.ajax({
+        $.cjax({
             url: '/api/sso/zorxauth/oidc/clients',
             method: 'DELETE',
             contentType: 'application/json',
