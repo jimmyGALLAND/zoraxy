@@ -629,6 +629,9 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 		idClaims["email_verified"] = false
 	}
 	for name, raw := range user.OIDCCustomClaims {
+		if _, reserved := reservedOIDCCustomClaims[name]; reserved {
+			continue
+		}
 		var value interface{}
 		if json.Unmarshal(raw, &value) == nil {
 			idClaims[name] = value
@@ -735,6 +738,9 @@ func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 		response["email_verified"] = false
 	}
 	for name, raw := range user.OIDCCustomClaims {
+		if _, reserved := reservedOIDCCustomClaims[name]; reserved {
+			continue
+		}
 		var value interface{}
 		if json.Unmarshal(raw, &value) == nil {
 			response[name] = value
