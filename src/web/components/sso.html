@@ -280,7 +280,9 @@
                         </div>
                         <div class="eight wide field">
                             <label for="oidcProxyDomain">Reverse proxy domain (optional)</label>
-                            <input id="oidcProxyDomain" type="text" placeholder="app.example.com">
+                            <select id="oidcProxyDomain" class="ui dropdown">
+                                <option value="">No proxy association</option>
+                            </select>
                         </div>
                     </div>
                     <div class="field">
@@ -397,8 +399,9 @@
         /* Load Zoraxy Auth Gateway settings from backend */
         getZorxAuthGatewaySettings();
 
-        /* Load registered OpenID Connect clients */
+        /* Load registered OpenID Connect clients and available reverse proxies */
         loadZorxAuthOIDCClients();
+        loadOIDCReverseProxyDomains();
 
         /* Add more initialization code here if needed */
     });
@@ -407,6 +410,49 @@
     function escapeOIDCHtml(value) {
         return $('<div>').text(value == null ? '' : String(value)).html();
     }
+
+    function loadOIDCReverseProxyDomains() {
+        var $select = $('#oidcProxyDomain');
+        $.ajax({
+            url: '/api/proxy/list',
+            method: 'POST',
+            data: {type: 'host'},
+            dataType: 'json',
+            success: function(data) {
+                $select.find('option:not(:first)').remove();
+                var endpoints = Array.isArray(data) ? data : (data.endpoints || data.proxies || []);
+                endpoints.forEach(function(endpoint) {
+                    var domain = endpoint.RootOrMatchingDomain || endpoint.rootOrMatchingDomain || endpoint.domain || '';
+                    if (!domain) return;
+                    $select.append($('<option>').val(domain).text(domain));
+                });
+                $select.dropdown();
+            },
+            error: function(xhr) {
+                console.error('Unable to load reverse proxy domains for OIDC:', xhr.responseText || xhr.statusText);
+            }
+        });
+    }
+
+    var oidcAutoRedirectURI = '';
+    $('#oidcProxyDomain').on('change', function() {
+        var domain = $(this).val();
+        var $redirects = $('#oidcRedirectURIs');
+        var current = ($redirects.val() || '').trim();
+
+        // Replace only the URI automatically inserted by this selector.
+        // Never overwrite redirect URIs entered or edited manually.
+        if (oidcAutoRedirectURI && current === oidcAutoRedirectURI) {
+            current = '';
+        }
+        oidcAutoRedirectURI = domain ? 'https://' + domain + '/' : '';
+
+        if (oidcAutoRedirectURI && !current) {
+            $redirects.val(oidcAutoRedirectURI);
+        } else if (!current && !oidcAutoRedirectURI) {
+            $redirects.val('');
+        }
+    });
 
     function loadZorxAuthOIDCClients() {
         $('#oidcClientsList').html('<div class="ui active inline loader"></div>');
@@ -460,6 +506,8 @@
                 $('#oidcSecretNotice').show();
                 $('#oidcNewClientSecret').val(data.client_secret || '');
                 $('#zorxAuthOIDCCreateForm')[0].reset();
+                oidcAutoRedirectURI = '';
+                $('#oidcProxyDomain').dropdown('clear');
                 loadZorxAuthOIDCClients();
                 msgbox('OIDC client created. Copy and store its secret now.', true);
             },
