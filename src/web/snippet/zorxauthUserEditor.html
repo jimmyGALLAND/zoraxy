@@ -542,8 +542,7 @@
 						password: password,
 						allowedHosts: allowedHosts,
 						useGroupPolicy: useGroupPolicy,
-						groupId: groupId,
-						oidcCustomClaims: JSON.stringify(oidcCustomClaims)
+						groupId: groupId
 					},
 					success: function(data){
 						if (data.error !== undefined){
@@ -595,7 +594,8 @@
 						allowedHosts: allowedHosts,
 						password: password,
 						useGroupPolicy: useGroupPolicy,
-						groupId: groupId
+						groupId: groupId,
+						oidcCustomClaims: JSON.stringify(oidcCustomClaims)
 					},
 					success: function(data){
 						if (data.error !== undefined){
