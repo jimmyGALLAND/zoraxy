@@ -330,11 +330,17 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	// Reject duplicated authorization parameters instead of silently accepting
 	// the first value returned by url.Values.Get.
-	for _, name := range []string{"client_id", "redirect_uri", "response_type", "scope", "state", "nonce", "code_challenge", "code_challenge_method"} {
+	for _, name := range []string{"client_id", "redirect_uri", "response_type", "scope", "state", "code_challenge", "code_challenge_method"} {
 		if len(q[name]) != 1 {
 			http.Error(w, "missing or duplicated authorization parameter: "+name, http.StatusBadRequest)
 			return
 		}
+	}
+	// The OIDC nonce parameter is optional in the authorization code flow.
+	// If supplied, it must occur exactly once and contain a non-empty value.
+	if nonceValues, exists := q["nonce"]; exists && (len(nonceValues) != 1 || nonceValues[0] == "") {
+		http.Error(w, "invalid nonce authorization parameter", http.StatusBadRequest)
+		return
 	}
 	client, err := p.loadClient(q.Get("client_id"))
 	if err != nil {
@@ -357,8 +363,8 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported authorization request", http.StatusBadRequest)
 		return
 	}
-	if q.Get("state") == "" || q.Get("nonce") == "" || q.Get("code_challenge_method") != "S256" || !validOIDCCodeChallenge(q.Get("code_challenge")) {
-		http.Error(w, "state, nonce and a valid PKCE S256 challenge are required", http.StatusBadRequest)
+	if q.Get("state") == "" || q.Get("code_challenge_method") != "S256" || !validOIDCCodeChallenge(q.Get("code_challenge")) {
+		http.Error(w, "state and a valid PKCE S256 challenge are required", http.StatusBadRequest)
 		return
 	}
 	if p.router.OIDCIssuer() == "" {
@@ -517,7 +523,10 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 	idClaims := map[string]interface{}{
 		"iss": p.router.OIDCIssuer(), "sub": stableOIDCSubject(user), "aud": client.ID,
-		"iat": now.Unix(), "exp": now.Add(oidcTokenLifetime).Unix(), "nonce": code.Nonce,
+		"iat": now.Unix(), "exp": now.Add(oidcTokenLifetime).Unix(),
+	}
+	if code.Nonce != "" {
+		idClaims["nonce"] = code.Nonce
 	}
 	if hasOIDCScope(code.Scope, "profile") {
 		idClaims["preferred_username"] = user.Username
