@@ -153,8 +153,8 @@ func (ar *AuthRouter) OIDCIssuer() string {
 // The plaintext secret is returned only once to the caller.
 func (ar *AuthRouter) RegisterOIDCClient(name, proxyDomain string, redirectURIs []string) (*OIDCClient, string, error) {
 	name = strings.TrimSpace(name)
-	if name == "" || len(redirectURIs) == 0 {
-		return nil, "", errors.New("client name and at least one redirect URI are required")
+	if name == "" || len(name) > 120 || len(redirectURIs) == 0 {
+		return nil, "", errors.New("client name (1-120 characters) and at least one redirect URI are required")
 	}
 	normalizedRedirectURIs, err := normalizeOIDCRedirectURIs(redirectURIs)
 	if err != nil {
@@ -212,7 +212,7 @@ func normalizeOIDCRedirectURIs(redirectURIs []string) ([]string, error) {
 		scheme := strings.ToLower(parsedScheme(parsed))
 		validHTTPS := scheme == "https" && parsed != nil && parsed.Host != "" &&
 			parsed.User == nil && parsed.Opaque == ""
-		validCustom := parsed != nil && scheme != "" && scheme != "http" && scheme != "https" &&
+		validCustom := parsed != nil && scheme != "" && scheme != "http" && scheme != "https" && strings.Contains(scheme, ".") &&
 			parsed.Host == "" && parsed.Opaque == "" && parsed.Path != "" &&
 			parsed.User == nil && parsed.Fragment == ""
 		if err != nil || parsed == nil || parsed.Scheme == "" ||
