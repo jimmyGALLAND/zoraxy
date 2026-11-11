@@ -382,8 +382,7 @@ func parseOIDCCustomClaims(raw string) (map[string]json.RawMessage, error) {
 		return nil, errors.New("OIDC custom claims must be a valid JSON object")
 	}
 	for name := range claims {
-		name = strings.TrimSpace(name)
-		if name == "" {
+		if name == "" || name != strings.TrimSpace(name) {
 			return nil, errors.New("OIDC custom claim names cannot be empty")
 		}
 		if _, reserved := reservedOIDCCustomClaims[name]; reserved {
