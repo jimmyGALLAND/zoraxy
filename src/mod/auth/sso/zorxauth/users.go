@@ -370,7 +370,7 @@ var reservedOIDCCustomClaims = map[string]struct{}{
 	"iss": {}, "sub": {}, "aud": {}, "exp": {}, "iat": {}, "nbf": {}, "jti": {},
 	"nonce": {}, "azp": {}, "auth_time": {}, "at_hash": {}, "c_hash": {},
 	"token_use": {}, "scope": {}, "email": {}, "email_verified": {},
-	"preferred_username": {},
+	"preferred_username": {}, "amr": {}, "acr": {},
 }
 
 func parseOIDCCustomClaims(raw string) (map[string]json.RawMessage, error) {
