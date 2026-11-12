@@ -438,26 +438,70 @@
         return $('<div>').text(value == null ? '' : String(value)).html();
     }
 
-    function loadOIDCReverseProxyDomains() {
-        var $select = $('#oidcProxyDomain');
+    // The create form and edit modal share one asynchronous proxy-domain load.
+    // Opening Edit before this request completes used to clone an empty dropdown,
+    // making the current proxy appear unselected intermittently.
+    var oidcProxyDomains = [];
+    var oidcProxyDomainsLoaded = false;
+    var oidcProxyDomainsLoading = false;
+    var oidcProxyDomainsCallbacks = [];
+
+    function loadOIDCReverseProxyDomains(callback) {
+        if (typeof callback === 'function') {
+            if (oidcProxyDomainsLoaded) {
+                callback(true);
+                return;
+            }
+            oidcProxyDomainsCallbacks.push(callback);
+        } else if (oidcProxyDomainsLoaded) {
+            return;
+        }
+
+        if (oidcProxyDomainsLoading) return;
+        oidcProxyDomainsLoading = true;
+
         $.cjax({
             url: '/api/proxy/list',
             method: 'POST',
             data: {type: 'host'},
             dataType: 'json',
             success: function(data) {
-                $select.find('option:not(:first)').remove();
                 var endpoints = Array.isArray(data) ? data : (data.endpoints || data.proxies || []);
+                var domains = [];
                 endpoints.forEach(function(endpoint) {
                     var domain = endpoint.RootOrMatchingDomain || endpoint.rootOrMatchingDomain || endpoint.domain || '';
-                    if (!domain) return;
+                    if (domain && domains.indexOf(domain) === -1) domains.push(domain);
+                });
+
+                oidcProxyDomains = domains;
+                oidcProxyDomainsLoaded = true;
+                var $select = $('#oidcProxyDomain');
+                $select.find('option:not(:first)').remove();
+                domains.forEach(function(domain) {
                     $select.append($('<option>').val(domain).text(domain));
                 });
-                $select.dropdown();
+                if ($select.data('module-dropdown')) {
+                    $select.dropdown('refresh');
+                } else {
+                    $select.dropdown();
+                }
+                finishOIDCProxyDomainLoad(true);
             },
             error: function(xhr) {
                 console.error('Unable to load reverse proxy domains for OIDC:', xhr.responseText || xhr.statusText);
+                finishOIDCProxyDomainLoad(false);
+            },
+            complete: function() {
+                oidcProxyDomainsLoading = false;
             }
+        });
+    }
+
+    function finishOIDCProxyDomainLoad(success) {
+        var callbacks = oidcProxyDomainsCallbacks.slice();
+        oidcProxyDomainsCallbacks = [];
+        callbacks.forEach(function(callback) {
+            try { callback(success); } catch (error) { console.error(error); }
         });
     }
 
@@ -575,17 +619,38 @@
                     msgbox('OIDC client not found', false);
                     return;
                 }
-                var $proxy = $('#oidcEditProxyDomain');
-                $proxy.empty().append($('<option>').val('').text('No proxy association'));
-                $('#oidcProxyDomain option').each(function() {
-                    if ($(this).val()) $proxy.append($(this).clone());
+
+                // Do not populate the edit selector until the proxy list is ready.
+                loadOIDCReverseProxyDomains(function(proxyLoadSucceeded) {
+                    if (!proxyLoadSucceeded) {
+                        msgbox('Unable to load reverse proxy domains. Please try again.', false);
+                        return;
+                    }
+
+                    var $proxy = $('#oidcEditProxyDomain');
+                    var selectedDomain = client.proxy_domain || '';
+                    $proxy.empty().append($('<option>').val('').text('No proxy association'));
+                    oidcProxyDomains.forEach(function(domain) {
+                        $proxy.append($('<option>').val(domain).text(domain));
+                    });
+
+                    // Keep an existing association visible even if the proxy list
+                    // endpoint did not include it (for example during a refresh).
+                    if (selectedDomain && oidcProxyDomains.indexOf(selectedDomain) === -1) {
+                        $proxy.append($('<option>').val(selectedDomain).text(selectedDomain + ' (currently associated)'));
+                    }
+
+                    $('#oidcEditClientID').val(client.client_id);
+                    $('#oidcEditClientName').val(client.name || '');
+                    if ($proxy.data('module-dropdown')) {
+                        $proxy.dropdown('refresh');
+                    } else {
+                        $proxy.dropdown();
+                    }
+                    $proxy.dropdown('set selected', selectedDomain);
+                    $('#oidcEditRedirectURIs').val((client.redirect_uris || []).join('\n'));
+                    $('#oidcClientEditModal').modal({ closable: false }).modal('show');
                 });
-                $('#oidcEditClientID').val(client.client_id);
-                $('#oidcEditClientName').val(client.name || '');
-                $proxy.dropdown();
-                $proxy.dropdown('set selected', client.proxy_domain || '');
-                $('#oidcEditRedirectURIs').val((client.redirect_uris || []).join('\n'));
-                $('#oidcClientEditModal').modal({ closable: false }).modal('show');
             },
             error: function(xhr) {
                 var message = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Unable to load OIDC client';
