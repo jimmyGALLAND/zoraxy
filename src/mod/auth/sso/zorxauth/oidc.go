@@ -380,7 +380,7 @@ func (p *oidcProvider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 // handleLogout supports Gitea's RP-initiated logout redirect without ending the
 // central Zoraxy Auth session. Gitea destroys its own local session before
 // redirecting the browser here. The registered client and its proxy domain are
-// checked before sending the browser to the configured portal landing page.
+// checked against the client's registered redirect URIs before sending the browser to the portal landing page.
 
 // isOIDCProxyLogoutHostAllowed validates the logout host against the primary
 // proxy domain and aliases supplied by the dynamic proxy router. Wildcard
