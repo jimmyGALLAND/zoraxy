@@ -29,6 +29,10 @@ const (
 	oidcIssuerOption = "oidc_issuer"
 	oidcCodeLifetime = 2 * time.Minute
 	oidcTokenLifetime = time.Hour
+
+	oidcACRBasic              = "urn:celjim:auth:basic"
+	oidcACRMFA                = "urn:celjim:auth:mfa"
+	oidcACRPhishingResistant  = "urn:celjim:auth:phishing-resistant"
 )
 
 type OIDCClient struct {
@@ -48,6 +52,8 @@ type oidcAuthorizationCode struct {
 	Scope               string
 	CodeChallenge       string
 	CodeChallengeMethod string
+	AuthMethods         []string
+	AuthContext         string
 	ExpiresAt           time.Time
 }
 
@@ -609,7 +615,9 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	p.codes.Store(code, &oidcAuthorizationCode{
 		ClientID: client.ID, Username: user.Username, RedirectURI: redirectURI, Nonce: q.Get("nonce"),
 		Scope: q.Get("scope"), CodeChallenge: q.Get("code_challenge"),
-		CodeChallengeMethod: q.Get("code_challenge_method"), ExpiresAt: time.Now().Add(oidcCodeLifetime),
+		CodeChallengeMethod: q.Get("code_challenge_method"),
+		AuthMethods: append([]string(nil), gatewaySession.AuthMethods...), AuthContext: gatewaySession.AuthContext,
+		ExpiresAt: time.Now().Add(oidcCodeLifetime),
 	})
 	time.AfterFunc(oidcCodeLifetime, func() { p.codes.Delete(code) })
 	callback, _ := url.Parse(redirectURI)
@@ -717,6 +725,12 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 	idClaims := map[string]interface{}{
 		"iss": p.router.OIDCIssuer(), "sub": stableOIDCSubject(user), "aud": client.ID,
 		"iat": now.Unix(), "exp": now.Add(oidcTokenLifetime).Unix(),
+	}
+	if len(code.AuthMethods) > 0 {
+		idClaims["amr"] = append([]string(nil), code.AuthMethods...)
+	}
+	if code.AuthContext != "" {
+		idClaims["acr"] = code.AuthContext
 	}
 	if code.Nonce != "" {
 		idClaims["nonce"] = code.Nonce
