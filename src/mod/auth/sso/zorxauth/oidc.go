@@ -457,7 +457,7 @@ func (p *oidcProvider) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 	postLogoutURI, err := url.Parse(redirectURIs[0])
 	if err != nil {
-		http.Error(w, "post_logout_redirect_uri does not match the registered reverse proxy", http.StatusBadRequest)
+		http.Error(w, "post_logout_redirect_uri is invalid", http.StatusBadRequest)
 		return
 	}
 
@@ -472,7 +472,7 @@ func (p *oidcProvider) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Deliberately do not revoke the Zoraxy Auth gateway session here. This
-	// endpoint is used for Gitea's local logout handoff only.
+	// endpoint is used for relying-party local logout handoffs.
 	http.Redirect(w, r, "https://portail.celjim.fr", http.StatusFound)
 }
 
