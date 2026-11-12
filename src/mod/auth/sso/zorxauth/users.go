@@ -433,7 +433,7 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 			user.AllowedHosts = normalizeAllowedHosts(r.FormValue("allowedHosts"))
 		}
 
-		if rawClaims, ok := r.Form["oidcCustomClaims"]; ok {
+		if _, ok := r.Form["oidcCustomClaims"]; ok {
 			claims, err := parseOIDCCustomClaims(r.FormValue("oidcCustomClaims"))
 			if err != nil {
 				return err
