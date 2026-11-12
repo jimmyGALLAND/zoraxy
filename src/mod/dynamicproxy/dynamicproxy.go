@@ -150,6 +150,18 @@ func NewDynamicProxy(option RouterOption) (*Router, error) {
 		secondaryStopChans:  make(map[string]chan bool),
 	}
 
+	// Give ZorxAuth access to proxy aliases without introducing an import cycle
+	// from the authentication package back into dynamicproxy.
+	if option.ZorxAuthAgentRouter != nil {
+		option.ZorxAuthAgentRouter.ProxyAliasResolver = func(primaryDomain string) []string {
+			endpoint, err := thisRouter.LoadProxy(primaryDomain)
+			if err != nil || endpoint == nil {
+				return nil
+			}
+			return append([]string(nil), endpoint.MatchingDomainAlias...)
+		}
+	}
+
 	thisRouter.mux = &ProxyHandler{
 		Parent: &thisRouter,
 	}
