@@ -544,8 +544,10 @@ func (gs *GatewayServer) handlePasskeyAuthComplete(w http.ResponseWriter, r *htt
 	sessionToken := gs.router.generateSessionToken()
 	expiryTime := time.Now().Add(time.Duration(cookieDuration) * time.Second)
 	gs.router.gatewaySessionStore.Store(sessionToken, &GatewaySession{
-		Username: foundUser.Username,
-		Expiry:   expiryTime,
+		Username:    foundUser.Username,
+		Expiry:      expiryTime,
+		AuthMethods: []string{"webauthn"},
+		AuthContext: oidcACRPhishingResistant,
 	})
 	time.AfterFunc(time.Duration(cookieDuration)*time.Second, func() {
 		gs.router.gatewaySessionStore.Delete(sessionToken)
