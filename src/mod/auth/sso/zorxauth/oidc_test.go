@@ -550,3 +550,32 @@ func TestVerifyOIDCJWTRejectsTampering(t *testing.T) {
 		t.Fatal("expected malformed JWT to be rejected")
 	}
 }
+
+func TestNormalizeOIDCRedirectURIs(t *testing.T) {
+	tests := []struct {
+		name string
+		uri  string
+		want bool
+	}{
+		{"Traccar Android callback", "org.traccar.manager://api/session/openid/callback", true},
+		{"native callback with empty authority", "app.immich:///oauth-callback", true},
+		{"HTTPS callback", "https://app.example.test/oidc/callback", true},
+		{"reject plain HTTP callback", "http://app.example.test/callback", false},
+		{"reject undotted custom scheme", "myapp://callback/path", false},
+		{"reject opaque custom URI", "org.example:callback", false},
+		{"reject userinfo", "org.example://user@callback/path", false},
+		{"reject fragment", "org.example://callback/path#fragment", false},
+		{"reject relative URI", "/oidc/callback", false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := normalizeOIDCRedirectURIs([]string{test.uri})
+			if (err == nil) != test.want {
+				t.Fatalf("normalizeOIDCRedirectURIs(%q) = (%v, %v), want success = %v", test.uri, got, err, test.want)
+			}
+			if test.want && (len(got) != 1 || got[0] != test.uri) {
+				t.Fatalf("redirect URI was not preserved exactly: got %#v, want %q", got, test.uri)
+			}
+		})
+	}
+}
