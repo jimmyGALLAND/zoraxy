@@ -256,6 +256,35 @@ func TestIsOIDCProxyLogoutHostAllowed(t *testing.T) {
 	}
 }
 
+func TestIsRegisteredOIDCLogoutRedirectURI(t *testing.T) {
+	registered := []string{
+		"https://cloud.celjim.fr/apps/user_oidc/code",
+		"https://portail.celjim.fr",
+	}
+	tests := []struct {
+		name string
+		uri  string
+		want bool
+	}{
+		{name: "registered portal landing page", uri: "https://portail.celjim.fr", want: true},
+		{name: "registered callback URI", uri: "https://cloud.celjim.fr/apps/user_oidc/code", want: true},
+		{name: "unregistered host", uri: "https://attacker.example.test", want: false},
+		{name: "unregistered path", uri: "https://portail.celjim.fr/other", want: false},
+		{name: "unregistered query", uri: "https://portail.celjim.fr?next=attacker", want: false},
+		{name: "plain HTTP", uri: "http://portail.celjim.fr", want: false},
+		{name: "userinfo", uri: "https://user@portail.celjim.fr", want: false},
+		{name: "fragment", uri: "https://portail.celjim.fr#section", want: false},
+		{name: "malformed URI", uri: "://invalid", want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isRegisteredOIDCLogoutRedirectURI(test.uri, registered); got != test.want {
+				t.Fatalf("isRegisteredOIDCLogoutRedirectURI(%q) = %v, want %v", test.uri, got, test.want)
+			}
+		})
+	}
+}
+
 func TestIsOIDCAuthorizeRedirect(t *testing.T) {
 	router := &AuthRouter{Options: &AuthRouterOptions{
 		SSORedirectURL: "https://auth.example.test",
