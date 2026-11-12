@@ -54,6 +54,7 @@ type oidcAuthorizationCode struct {
 	CodeChallengeMethod string
 	AuthMethods         []string
 	AuthContext         string
+	AuthTime            int64
 	ExpiresAt           time.Time
 }
 
@@ -617,6 +618,7 @@ func (p *oidcProvider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		Scope: q.Get("scope"), CodeChallenge: q.Get("code_challenge"),
 		CodeChallengeMethod: q.Get("code_challenge_method"),
 		AuthMethods: append([]string(nil), gatewaySession.AuthMethods...), AuthContext: gatewaySession.AuthContext,
+		AuthTime: gatewaySession.AuthTime,
 		ExpiresAt: time.Now().Add(oidcCodeLifetime),
 	})
 	time.AfterFunc(oidcCodeLifetime, func() { p.codes.Delete(code) })
@@ -731,6 +733,9 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 	if code.AuthContext != "" {
 		idClaims["acr"] = code.AuthContext
+	}
+	if code.AuthTime > 0 {
+		idClaims["auth_time"] = code.AuthTime
 	}
 	if code.Nonce != "" {
 		idClaims["nonce"] = code.Nonce
