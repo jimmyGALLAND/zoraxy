@@ -225,6 +225,37 @@ func TestValidOIDCCodeChallenge(t *testing.T) {
 	}
 }
 
+func TestIsOIDCProxyLogoutHostAllowed(t *testing.T) {
+	resolveAliases := func(primary string) []string {
+		if primary == "cloud.diagimm.fr" {
+			return []string{"cloud.celjim.fr", "*.apps.celjim.fr"}
+		}
+		return nil
+	}
+	tests := []struct {
+		name string
+		host string
+		primary string
+		resolve func(string) []string
+		want bool
+	}{
+		{name: "primary domain", host: "cloud.diagimm.fr", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: true},
+		{name: "configured alias", host: "cloud.celjim.fr", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: true},
+		{name: "wildcard alias", host: "files.apps.celjim.fr", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: true},
+		{name: "case insensitive", host: "CLOUD.CELJIM.FR.", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: true},
+		{name: "unrelated host", host: "attacker.example.test", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: false},
+		{name: "no resolver", host: "cloud.celjim.fr", primary: "cloud.diagimm.fr", want: false},
+		{name: "empty host", host: "", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isOIDCProxyLogoutHostAllowed(test.host, test.primary, test.resolve); got != test.want {
+				t.Fatalf("isOIDCProxyLogoutHostAllowed(%q, %q) = %v, want %v", test.host, test.primary, got, test.want)
+			}
+		})
+	}
+}
+
 func TestIsOIDCAuthorizeRedirect(t *testing.T) {
 	router := &AuthRouter{Options: &AuthRouterOptions{
 		SSORedirectURL: "https://auth.example.test",
