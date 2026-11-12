@@ -616,7 +616,7 @@ func (ar *AuthRouter) HandleCustomizationReset(w http.ResponseWriter, r *http.Re
 var customAssetTypes = map[string]bool{
 	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true,
 	".svg": true, ".ico": true, ".css": true, ".woff": true, ".woff2": true,
-	".pdf": true, ".txt": true, ".zip": true,
+	".pdf": true, ".txt": true, ".zip": true, ".js": true,
 }
 
 func (ar *AuthRouter) customFolder() string {
@@ -629,7 +629,7 @@ func (ar *AuthRouter) customFolder() string {
 
 // ServeCustomAsset serves static files placed in the custom folder.
 func (ar *AuthRouter) ServeCustomAsset(w http.ResponseWriter, r *http.Request) {
-  
+	// log.Println("custom asset:", r.URL.Path, "-> folder:", ar.customFolder())
   
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -673,6 +673,9 @@ func (ar *AuthRouter) ServeCustomAsset(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	if ext == ".svg" {
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
+	}
+	if ext == ".js" {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	}
 	if ext == ".zip" || ext == ".pdf" {
 		// Let the browser decide for PDF, force download for archives

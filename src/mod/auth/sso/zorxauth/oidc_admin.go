@@ -50,6 +50,26 @@ func (ar *AuthRouter) HandleOIDCClients(w http.ResponseWriter, r *http.Request) 
 			"client_secret": secret,
 			"warning": "The client secret is shown only once. Store it securely.",
 		})
+	case http.MethodPut:
+		var request oidcClientRequest
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&request); err != nil {
+			utils.SendErrorResponse(w, "invalid request body")
+			return
+		}
+		request.ClientID = strings.TrimSpace(request.ClientID)
+		request.Name = strings.TrimSpace(request.Name)
+		request.ProxyDomain = strings.TrimSpace(request.ProxyDomain)
+		if request.ClientID == "" || request.Name == "" || len(request.RedirectURIs) == 0 {
+			utils.SendErrorResponse(w, "client_id, name and redirect_uris are required")
+			return
+		}
+		client, err := ar.UpdateOIDCClient(request.ClientID, request.Name, request.ProxyDomain, request.RedirectURIs)
+		if err != nil {
+			utils.SendErrorResponse(w, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"client": client})
 	case http.MethodDelete:
 		var request oidcClientRequest
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&request); err != nil {

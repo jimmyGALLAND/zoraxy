@@ -920,11 +920,38 @@
                 });
                 populateTagFilterDropdown(data);
                 $("#tagFilterDropdown").dropdown('set selected', selectedTag);
+                loadOIDCClientIndicators();
             }
 
             resolveAccessRuleNameOnHostRPlist();
             initDetailView();
             filterProxyList();
+        });
+    }
+
+    // Mark HTTP proxies that have an OIDC client registered in Zoraxy Auth.
+    function loadOIDCClientIndicators(){
+        $.get("/api/sso/zorxauth/oidc/clients", function(response){
+            const clients = response && Array.isArray(response.clients) ? response.clients : [];
+            const byDomain = {};
+            clients.forEach(client => {
+                const domain = String(client.proxy_domain || "").trim().toLowerCase();
+                if (!domain) return;
+                if (!byDomain[domain]) byDomain[domain] = [];
+                byDomain[domain].push(client.name || client.client_id || "OIDC client");
+            });
+            $("#httpProxyList tr.subdEntry").each(function(){
+                const domain = String($(this).attr("eptuuid") || "").trim().toLowerCase();
+                const names = byDomain[domain];
+                if (!names || names.length === 0) return;
+                const cell = $(this).find("td[datatype='auth']");
+                if (cell.find(".oidcClientIndicator").length) return;
+                const label = $("<span>")
+                    .addClass("ui mini purple label oidcClientIndicator")
+                    .attr("title", "OIDC client: " + names.join(", "))
+                    .text("OIDC");
+                cell.append(" ").append(label);
+            });
         });
     }
 

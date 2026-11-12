@@ -1,6 +1,7 @@
 package zorxauth
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ type User struct {
 	UseGroupPolicy bool     `json:"useGroupPolicy"` //Use group poliy instead of AllowedHosts for checking access
 	GroupID        string   `json:"groupId"`        //GroupID is the group policy ID that the user belongs to
 	AllowedHosts   []string `json:"allowedHosts"`   //optional, if empty, allow all hosts
+	OIDCCustomClaims map[string]json.RawMessage `json:"oidcCustomClaims,omitempty"` //Additional claims returned to OIDC clients
 
 	/* User Configs */
 	Enable2FA  bool   `json:"enable2FA"`  //Whether the user has enabled 2FA. If true, the user must complete 2FA verification after password verification to complete login.

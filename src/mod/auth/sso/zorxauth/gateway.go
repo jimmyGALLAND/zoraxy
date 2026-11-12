@@ -103,6 +103,7 @@ func NewGatewayServer(router *AuthRouter) *GatewayServer {
 	registerOIDC("/oidc/token", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleToken(w, r) })
 	registerOIDC("/oidc/userinfo", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleUserInfo(w, r) })
 	registerOIDC("/oidc/jwks", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleJWKS(w, r) })
+	registerOIDC("/oidc/logout", func(w http.ResponseWriter, r *http.Request) { gs.router.oidc.handleLogout(w, r) })
 
 	return gs
 }
