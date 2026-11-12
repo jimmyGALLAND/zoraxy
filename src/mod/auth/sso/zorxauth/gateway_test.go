@@ -38,9 +38,11 @@ func fastPathRedirect(t *testing.T, ar *AuthRouter, gs *GatewayServer, rememberM
 	t.Helper()
 	token := "gateway-session-token"
 	ar.gatewaySessionStore.Store(token, &GatewaySession{
-		Username:   "alice",
-		Expiry:     time.Now().Add(time.Hour),
-		RememberMe: rememberMe,
+		Username:    "alice",
+		Expiry:      time.Now().Add(time.Hour),
+		RememberMe:  rememberMe,
+		AuthMethods: []string{"pwd", "otp", "mfa"},
+		AuthContext: oidcACRMFA,
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/?redirect="+url.QueryEscape("https://app-b.example.com/"), nil)
@@ -97,6 +99,12 @@ func TestHandleAuthPageFastPathRenewsRememberMeSessionWithRememberMeDuration(t *
 	}
 	if !session.RememberMe {
 		t.Fatalf("expected gateway session to keep RememberMe after renewal")
+	}
+	if session.AuthContext != oidcACRMFA {
+		t.Fatalf("expected gateway session to preserve authentication context %q, got %q", oidcACRMFA, session.AuthContext)
+	}
+	if len(session.AuthMethods) != 3 || session.AuthMethods[0] != "pwd" || session.AuthMethods[1] != "otp" || session.AuthMethods[2] != "mfa" {
+		t.Fatalf("expected gateway session to preserve authentication methods, got %#v", session.AuthMethods)
 	}
 }
 
