@@ -106,6 +106,9 @@ type AuthRouter struct {
 	Logger   *logger.Logger
 	Database *database.Database
 	Options  *AuthRouterOptions
+	// ProxyAliasResolver returns the configured aliases for a primary reverse-proxy domain.
+	// It is injected by dynamicproxy to avoid a package import cycle.
+	ProxyAliasResolver func(primaryDomain string) []string
 
 	/* Internal */
 	sessionIdStore      sync.Map //sessionId -> userID
