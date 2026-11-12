@@ -83,6 +83,7 @@ type GatewaySession struct {
 	RememberMe  bool // Whether the user selected "Remember Me" when the gateway session was created
 	AuthMethods []string // Authentication methods actually completed for this session
 	AuthContext string   // Authentication assurance class established for this session
+	AuthTime    int64    // Unix timestamp when the user last actively authenticated
 }
 
 // PendingTOTPSession holds login context while waiting for 2FA verification
