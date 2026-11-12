@@ -407,9 +407,29 @@ func (p *oidcProvider) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	postLogoutURI, err := url.Parse(redirectURIs[0])
-	if err != nil || postLogoutURI.Scheme != "https" || postLogoutURI.Host == "" ||
+	if err != nil {
+		http.Error(w, "post_logout_redirect_uri does not match the registered reverse proxy", http.StatusBadRequest)
+		return
+	}
+
+	// Accept the primary proxy hostname and its configured aliases. The OIDC
+	// client remains bound to the primary proxy domain; aliases only extend
+	// which public hostnames may be used for the post-logout landing URI.
+	proxyHostAllowed := strings.EqualFold(postLogoutURI.Hostname(), client.ProxyDomain)
+	if !proxyHostAllowed {
+		if proxyEndpoint, proxyErr := p.router.GetProxyEndpointById(client.ProxyDomain, false); proxyErr == nil {
+			for _, alias := range proxyEndpoint.MatchingDomainAlias {
+				if strings.EqualFold(postLogoutURI.Hostname(), alias) {
+					proxyHostAllowed = true
+					break
+				}
+			}
+		}
+	}
+
+	if postLogoutURI.Scheme != "https" || postLogoutURI.Host == "" ||
 		postLogoutURI.User != nil || postLogoutURI.Fragment != "" ||
-		!strings.EqualFold(postLogoutURI.Hostname(), client.ProxyDomain) ||
+		!proxyHostAllowed ||
 		(postLogoutURI.Port() != "" && postLogoutURI.Port() != "443") ||
 		(postLogoutURI.Path != "" && postLogoutURI.Path != "/") ||
 		postLogoutURI.RawQuery != "" {
