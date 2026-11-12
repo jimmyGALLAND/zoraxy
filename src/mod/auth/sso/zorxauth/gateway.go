@@ -279,9 +279,11 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 						// Store a new immutable value instead of mutating the shared session
 						// pointer, which may be read concurrently by authentication checks.
 						gs.router.gatewaySessionStore.Store(cookie.Value, &GatewaySession{
-							Username:   gatewaySession.Username,
-							Expiry:     newExpiry,
-							RememberMe: gatewaySession.RememberMe,
+							Username:      gatewaySession.Username,
+							Expiry:        newExpiry,
+							RememberMe:    gatewaySession.RememberMe,
+							AuthMethods:   append([]string(nil), gatewaySession.AuthMethods...),
+							AuthContext:   gatewaySession.AuthContext,
 						})
 					}
 				}
@@ -503,9 +505,11 @@ func (gs *GatewayServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 	sessionToken := gs.router.generateSessionToken()
 	expiryTime := time.Now().Add(time.Duration(cookieDuration) * time.Second)
 	gatewaySession := &GatewaySession{
-		Username:   u.Username,
-		Expiry:     expiryTime,
-		RememberMe: rememberMe,
+		Username:    u.Username,
+		Expiry:      expiryTime,
+		RememberMe:  rememberMe,
+		AuthMethods: []string{"pwd"},
+		AuthContext: oidcACRBasic,
 	}
 	gs.router.gatewaySessionStore.Store(sessionToken, gatewaySession)
 
@@ -749,9 +753,11 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 	sessionToken := gs.router.generateSessionToken()
 	expiryTime := time.Now().Add(time.Duration(cookieDuration) * time.Second)
 	gs.router.gatewaySessionStore.Store(sessionToken, &GatewaySession{
-		Username:   u.Username,
-		Expiry:     expiryTime,
-		RememberMe: pending.RememberMe,
+		Username:    u.Username,
+		Expiry:      expiryTime,
+		RememberMe:  pending.RememberMe,
+		AuthMethods: []string{"pwd", "otp", "mfa"},
+		AuthContext: oidcACRMFA,
 	})
 	time.AfterFunc(time.Duration(cookieDuration)*time.Second, func() {
 		gs.router.gatewaySessionStore.Delete(sessionToken)
