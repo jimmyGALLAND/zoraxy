@@ -413,6 +413,23 @@ func isOIDCProxyLogoutHostAllowed(host, primaryDomain string, resolveAliases fun
 	return false
 }
 
+// isRegisteredOIDCLogoutRedirectURI requires an exact match with a URI
+// explicitly registered for the OIDC client. Logout destinations are HTTPS
+// only, even though authorization clients may also register native-app URIs.
+func isRegisteredOIDCLogoutRedirectURI(rawURI string, registeredURIs []string) bool {
+	parsed, err := url.Parse(rawURI)
+	if err != nil || parsed == nil || parsed.Scheme != "https" || parsed.Host == "" ||
+		parsed.User != nil || parsed.Fragment != "" || parsed.Opaque != "" {
+		return false
+	}
+	for _, registeredURI := range registeredURIs {
+		if rawURI == registeredURI {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *oidcProvider) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -444,20 +461,13 @@ func (p *oidcProvider) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Accept the primary proxy hostname and its configured aliases. The OIDC
-	// client remains bound to the primary proxy domain; aliases only extend
-	// which public hostnames may be used for the post-logout landing URI.
-	proxyHostAllowed := isOIDCProxyLogoutHostAllowed(
-		postLogoutURI.Hostname(), client.ProxyDomain, p.router.ProxyAliasResolver,
-	)
-
-	if postLogoutURI.Scheme != "https" || postLogoutURI.Host == "" ||
-		postLogoutURI.User != nil || postLogoutURI.Fragment != "" ||
-		!proxyHostAllowed ||
-		(postLogoutURI.Port() != "" && postLogoutURI.Port() != "443") ||
-		(postLogoutURI.Path != "" && postLogoutURI.Path != "/") ||
-		postLogoutURI.RawQuery != "" {
-		http.Error(w, "post_logout_redirect_uri does not match the registered reverse proxy", http.StatusBadRequest)
+	// post_logout_redirect_uri must exactly match one of this client's
+	// registered Allowed Redirect URIs. This permits the shared portal landing
+	// page (https://portail.celjim.fr) without accepting arbitrary destinations.
+	if !isRegisteredOIDCLogoutRedirectURI(redirectURIs[0], client.RedirectURIs) ||
+		postLogoutURI.Scheme != "https" || postLogoutURI.Host == "" ||
+		postLogoutURI.User != nil || postLogoutURI.Fragment != "" || postLogoutURI.Opaque != "" {
+		http.Error(w, "post_logout_redirect_uri does not match a registered redirect URI", http.StatusBadRequest)
 		return
 	}
 
