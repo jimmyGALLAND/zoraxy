@@ -201,8 +201,9 @@ func (ar *AuthRouter) RegisterOIDCClient(name, proxyDomain string, redirectURIs 
 }
 
 // normalizeOIDCRedirectURIs validates and deduplicates exact OIDC callback URIs.
-// HTTPS callbacks require an authority; native-app callbacks may use a private-use
-// URI scheme (for example app.immich:///oauth-callback).
+// HTTPS callbacks require an authority. Native-app callbacks may use a dotted
+// private-use URI scheme, with either an authority (scheme://host/path) or an
+// absolute path (scheme:///path), as commonly used by mobile applications.
 func normalizeOIDCRedirectURIs(redirectURIs []string) ([]string, error) {
 	normalized := make([]string, 0, len(redirectURIs))
 	seen := make(map[string]struct{}, len(redirectURIs))
@@ -210,13 +211,13 @@ func normalizeOIDCRedirectURIs(redirectURIs []string) ([]string, error) {
 		rawURI = strings.TrimSpace(rawURI)
 		parsed, err := url.Parse(rawURI)
 		scheme := strings.ToLower(parsedScheme(parsed))
-		validHTTPS := scheme == "https" && parsed != nil && parsed.Host != "" &&
+		validHTTPS := parsed != nil && scheme == "https" && parsed.Host != "" &&
 			parsed.User == nil && parsed.Opaque == ""
-		validCustom := parsed != nil && scheme != "" && scheme != "http" && scheme != "https" && strings.Contains(scheme, ".") &&
-			parsed.Host == "" && parsed.Opaque == "" && parsed.Path != "" &&
-			parsed.User == nil && parsed.Fragment == ""
+		validCustom := parsed != nil && scheme != "" && scheme != "http" && scheme != "https" &&
+			strings.Contains(scheme, ".") && parsed.Opaque == "" &&
+			(parsed.Host != "" || parsed.Path != "") && parsed.User == nil && parsed.Fragment == ""
 		if err != nil || parsed == nil || parsed.Scheme == "" ||
-			(parsed.Fragment != "" || parsed.User != nil) || !(validHTTPS || validCustom) {
+			parsed.Fragment != "" || parsed.User != nil || !(validHTTPS || validCustom) {
 			return nil, fmt.Errorf("invalid redirect URI: %s", rawURI)
 		}
 		if _, exists := seen[rawURI]; exists {
