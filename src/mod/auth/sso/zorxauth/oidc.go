@@ -381,6 +381,38 @@ func (p *oidcProvider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 // central Zoraxy Auth session. Gitea destroys its own local session before
 // redirecting the browser here. The registered client and its proxy domain are
 // checked before sending the browser to the configured portal landing page.
+
+// isOIDCProxyLogoutHostAllowed validates the logout host against the primary
+// proxy domain and aliases supplied by the dynamic proxy router. Wildcard
+// aliases use the same leading "*." convention as reverse-proxy host aliases.
+func isOIDCProxyLogoutHostAllowed(host, primaryDomain string, resolveAliases func(string) []string) bool {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	primaryDomain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(primaryDomain)), ".")
+	if host == "" || primaryDomain == "" {
+		return false
+	}
+	if host == primaryDomain {
+		return true
+	}
+	if resolveAliases == nil {
+		return false
+	}
+	for _, alias := range resolveAliases(primaryDomain) {
+		alias = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(alias)), ".")
+		if alias == "" {
+			continue
+		}
+		if alias == host {
+			return true
+		}
+		if strings.HasPrefix(alias, "*.") && strings.HasSuffix(host, alias[1:]) &&
+			len(host) > len(alias)-1 {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *oidcProvider) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -415,17 +447,9 @@ func (p *oidcProvider) handleLogout(w http.ResponseWriter, r *http.Request) {
 	// Accept the primary proxy hostname and its configured aliases. The OIDC
 	// client remains bound to the primary proxy domain; aliases only extend
 	// which public hostnames may be used for the post-logout landing URI.
-	proxyHostAllowed := strings.EqualFold(postLogoutURI.Hostname(), client.ProxyDomain)
-	if !proxyHostAllowed {
-		if proxyEndpoint, proxyErr := p.router.GetProxyEndpointById(client.ProxyDomain, false); proxyErr == nil {
-			for _, alias := range proxyEndpoint.MatchingDomainAlias {
-				if strings.EqualFold(postLogoutURI.Hostname(), alias) {
-					proxyHostAllowed = true
-					break
-				}
-			}
-		}
-	}
+	proxyHostAllowed := isOIDCProxyLogoutHostAllowed(
+		postLogoutURI.Hostname(), client.ProxyDomain, p.router.ProxyAliasResolver,
+	)
 
 	if postLogoutURI.Scheme != "https" || postLogoutURI.Host == "" ||
 		postLogoutURI.User != nil || postLogoutURI.Fragment != "" ||
