@@ -284,6 +284,7 @@ func (gs *GatewayServer) handleAuthPage(w http.ResponseWriter, r *http.Request) 
 							RememberMe:    gatewaySession.RememberMe,
 							AuthMethods:   append([]string(nil), gatewaySession.AuthMethods...),
 							AuthContext:   gatewaySession.AuthContext,
+							AuthTime:      gatewaySession.AuthTime,
 						})
 					}
 				}
@@ -510,6 +511,7 @@ func (gs *GatewayServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 		RememberMe:  rememberMe,
 		AuthMethods: []string{"pwd"},
 		AuthContext: oidcACRBasic,
+		AuthTime:    time.Now().Unix(),
 	}
 	gs.router.gatewaySessionStore.Store(sessionToken, gatewaySession)
 
@@ -758,6 +760,7 @@ func (gs *GatewayServer) handleTOTPVerify(w http.ResponseWriter, r *http.Request
 		RememberMe:  pending.RememberMe,
 		AuthMethods: []string{"pwd", "otp", "mfa"},
 		AuthContext: oidcACRMFA,
+		AuthTime:    time.Now().Unix(),
 	})
 	time.AfterFunc(time.Duration(cookieDuration)*time.Second, func() {
 		gs.router.gatewaySessionStore.Delete(sessionToken)
