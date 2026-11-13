@@ -266,6 +266,34 @@
                 <button class="ui basic red button" type="button" onclick="logoutAllUsers();"><i class="ui sign-out icon"></i> Logout All Users</button>
             </form>
             <div class="ui divider"></div>
+            <section id="zorxAuthSystemSettings">
+                <h3>Système</h3>
+                <p>Paramètres du serveur SMTP utilisé pour les e-mails de vérification des adresses.</p>
+                <form class="ui form" id="zorxAuthSMTPSettings">
+                    <div class="fields">
+                        <div class="ten wide field"><label for="zorxAuthSMTPHost">Hôte SMTP</label><input id="zorxAuthSMTPHost" type="text" placeholder="smtp.example.com" required></div>
+                        <div class="six wide field"><label for="zorxAuthSMTPPort">Port</label><input id="zorxAuthSMTPPort" type="number" min="1" max="65535" placeholder="587" required></div>
+                    </div>
+                    <div class="fields">
+                        <div class="eight wide field"><label for="zorxAuthSMTPSecurity">Sécurité</label><select id="zorxAuthSMTPSecurity" class="ui dropdown"><option value="starttls">STARTTLS</option><option value="tls">SSL/TLS implicite</option><option value="none">Aucune</option></select></div>
+                        <div class="eight wide field"><label for="zorxAuthSMTPUsername">Nom d'utilisateur</label><input id="zorxAuthSMTPUsername" type="text" autocomplete="off"></div>
+                    </div>
+                    <div class="field"><label for="zorxAuthSMTPPassword">Mot de passe</label><input id="zorxAuthSMTPPassword" type="password" autocomplete="new-password" placeholder="Laisser vide pour conserver le mot de passe enregistré"><small id="zorxAuthSMTPPasswordStatus">Le mot de passe n'est jamais renvoyé par le serveur.</small></div>
+                    <div class="fields">
+                        <div class="eight wide field"><label for="zorxAuthSMTPFromEmail">Adresse expéditeur</label><input id="zorxAuthSMTPFromEmail" type="email" placeholder="noreply@example.com" required></div>
+                        <div class="eight wide field"><label for="zorxAuthSMTPFromName">Nom expéditeur</label><input id="zorxAuthSMTPFromName" type="text" placeholder="Zoraxy Auth"></div>
+                    </div>
+                    <button class="ui basic button" type="submit"><i class="green check icon"></i> Enregistrer</button>
+                </form>
+                <div class="ui divider"></div>
+                <form class="ui form" id="zorxAuthSMTPTestForm">
+                    <div class="fields">
+                        <div class="twelve wide field"><label for="zorxAuthSMTPTestRecipient">Adresse de destination pour le test</label><input id="zorxAuthSMTPTestRecipient" type="email" placeholder="vous@example.com" required></div>
+                        <div class="four wide field" style="display:flex;align-items:flex-end;"><button class="ui basic button" type="submit"><i class="paper plane icon"></i> Tester SMTP</button></div>
+                    </div>
+                </form>
+            </section>
+            <div class="ui divider"></div>
             <section id="zorxAuthOIDC">
                 <h3>OpenID Connect Provider</h3>
                 <p>Register OIDC clients for applications using this central Zoraxy Auth issuer. Each client receives its own Client ID and secret.</p>
@@ -425,6 +453,7 @@
 
         /* Load Zoraxy Auth Gateway settings from backend */
         getZorxAuthGatewaySettings();
+        getZorxAuthSMTPSettings();
 
         /* Load registered OpenID Connect clients and available reverse proxies */
         loadZorxAuthOIDCClients();
@@ -1130,6 +1159,37 @@
     /*
         Zoraxy Auth Gateway settings fetcher.
     */
+    function getZorxAuthSMTPSettings() {
+        $.cjax({url:'/api/sso/zorxauth/email/smtp',method:'GET',dataType:'json',success:function(data) {
+            $('#zorxAuthSMTPHost').val(data.host || '');
+            $('#zorxAuthSMTPPort').val(data.port || 587);
+            $('#zorxAuthSMTPSecurity').val(data.security || 'starttls').trigger('change');
+            $('#zorxAuthSMTPUsername').val(data.username || '');
+            $('#zorxAuthSMTPFromEmail').val(data.fromEmail || '');
+            $('#zorxAuthSMTPFromName').val(data.fromName || '');
+            $('#zorxAuthSMTPPassword').val('');
+            $('#zorxAuthSMTPPasswordStatus').text(data.passwordConfigured ? 'Un mot de passe est enregistré. Laissez ce champ vide pour le conserver.' : 'Aucun mot de passe SMTP enregistré.');
+        },error:function(){msgbox('Impossible de charger la configuration SMTP',false);}});
+    }
+    $('#zorxAuthSMTPSettings').on('submit',function(event) {
+        event.preventDefault();
+        $.cjax({url:'/api/sso/zorxauth/email/smtp',method:'POST',data:{
+            host:$('#zorxAuthSMTPHost').val().trim(),port:parseInt($('#zorxAuthSMTPPort').val(),10),
+            security:$('#zorxAuthSMTPSecurity').val(),username:$('#zorxAuthSMTPUsername').val().trim(),
+            password:$('#zorxAuthSMTPPassword').val(),fromEmail:$('#zorxAuthSMTPFromEmail').val().trim(),
+            fromName:$('#zorxAuthSMTPFromName').val().trim()
+        },success:function(data){
+            if(data.error){msgbox(data.error,false);return;}
+            $('#zorxAuthSMTPPassword').val('');msgbox('Configuration SMTP enregistrée',true);getZorxAuthSMTPSettings();
+        },error:function(){msgbox('Échec de l’enregistrement de la configuration SMTP',false);}});
+    });
+    $('#zorxAuthSMTPTestForm').on('submit',function(event) {
+        event.preventDefault();
+        $.cjax({url:'/api/sso/zorxauth/email/smtp/test',method:'POST',data:{recipient:$('#zorxAuthSMTPTestRecipient').val().trim()},
+            success:function(data){if(data.error){msgbox(data.error,false);return;}msgbox('E-mail de test envoyé',true);},
+            error:function(){msgbox('Échec du test SMTP. Vérifiez les paramètres et les journaux.',false);}});
+    });
+
     function setZorxAuthGatewayRunningState(gatewayEnabled, isRunning, gatewayPort) {
         if (gatewayPort !== undefined && gatewayPort !== null && gatewayPort !== "") {
             $(".zorxAuthGateway_port").text(gatewayPort);
