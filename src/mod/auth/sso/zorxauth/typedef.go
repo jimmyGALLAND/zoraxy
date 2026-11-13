@@ -125,6 +125,8 @@ type AuthRouter struct {
 	oidcClientMutex     sync.Mutex // Serializes OIDC client registration and proxy association checks
 	userMutationMutex   sync.Mutex // Serializes complete user read-modify-write operations
 	emailVerificationMutex sync.Mutex // Serializes verification email issuance with account email changes
+	emailVerificationRateLimitMutex sync.Mutex // Protects per-IP email verification resend limits
+	emailVerificationRateLimits map[string]emailVerificationRateLimitEntry
 	sessionLifecycleMutex sync.Mutex // Serializes session issuance and account-wide revocation
 	oidc                *oidcProvider
 
