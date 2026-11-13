@@ -189,6 +189,14 @@ func (ar *AuthRouter) sendEmail(to, subject, body string) error {
 }
 
 func (ar *AuthRouter) createEmailVerification(username string) error {
+	ar.emailVerificationMutex.Lock()
+	defer ar.emailVerificationMutex.Unlock()
+
+	return ar.createEmailVerificationLocked(username)
+}
+
+// createEmailVerificationLocked issues and delivers a token while the lifecycle mutex is held.
+func (ar *AuthRouter) createEmailVerificationLocked(username string) error {
 	var rawToken [32]byte
 	if _, err := rand.Read(rawToken[:]); err != nil {
 		return fmt.Errorf("could not generate verification token: %w", err)
