@@ -60,6 +60,24 @@ func (config *EmailSMTPConfig) validate() error {
 	if config.Host == "" {
 		return errors.New("SMTP host is required")
 	}
+	// Accept either a hostname/IP address or an smtp:// / smtps:// URL.
+	// Transport security remains controlled by the dedicated security setting.
+	if strings.Contains(config.Host, "://") {
+		serverURL, err := url.Parse(config.Host)
+		if err != nil || (serverURL.Scheme != "smtp" && serverURL.Scheme != "smtps") ||
+			serverURL.Hostname() == "" || serverURL.User != nil ||
+			(serverURL.Path != "" && serverURL.Path != "/") || serverURL.RawQuery != "" || serverURL.Fragment != "" {
+			return errors.New("SMTP URL must contain only an smtp:// or smtps:// server address")
+		}
+		if serverURL.Port() != "" {
+			urlPort, _ := strconv.Atoi(serverURL.Port())
+			if config.Port != 0 && config.Port != urlPort {
+				return errors.New("SMTP URL port conflicts with the configured port")
+			}
+			config.Port = urlPort
+		}
+		config.Host = serverURL.Hostname()
+	}
 	if config.Port < 1 || config.Port > 65535 {
 		return errors.New("SMTP port must be between 1 and 65535")
 	}
@@ -77,9 +95,6 @@ func (config *EmailSMTPConfig) validate() error {
 	sender, err := mail.ParseAddress(config.FromEmail)
 	if err != nil || sender.Address != config.FromEmail {
 		return errors.New("a valid sender email address without a display name is required")
-	}
-	if strings.Contains(config.Host, "://") || strings.ContainsAny(config.Host, "/\\") {
-		return errors.New("SMTP host must be a hostname or IP address, not a URL")
 	}
 	return nil
 }
