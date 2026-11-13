@@ -342,7 +342,11 @@ func (ar *AuthRouter) HandleEmailSMTPSettings(w http.ResponseWriter, r *http.Req
 		}
 		config.Host, config.Port, config.Security = request.Host, request.Port, request.Security
 		config.Username, config.FromEmail, config.FromName = request.Username, request.FromEmail, request.FromName
-		if request.Password != "" {
+		if strings.TrimSpace(request.Username) == "" {
+			// Authentication is disabled when no username is configured; do not
+			// retain an obsolete password in that case.
+			config.Password = ""
+		} else if request.Password != "" {
 			config.Password = request.Password
 		}
 		if err := config.validate(); err != nil {
