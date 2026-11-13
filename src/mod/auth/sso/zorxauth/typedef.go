@@ -23,6 +23,10 @@ type User struct {
 	ID             string   `json:"id"` //uuidv4
 	Username       string   `json:"username"`
 	Email          string   `json:"email"` //optional, alternative login identifier if provided
+	EmailVerified  bool     `json:"emailVerified"` //True only after the address owner completes email verification
+	EmailVerificationTokenHash string `json:"emailVerificationTokenHash,omitempty"` //SHA-256 hash of the one-time verification token
+	EmailVerificationExpiresAt time.Time `json:"emailVerificationExpiresAt,omitempty"`
+	EmailVerificationSentAt time.Time `json:"emailVerificationSentAt,omitempty"`
 	PasswordHash   string   `json:"passwordHash"`
 	UseGroupPolicy bool     `json:"useGroupPolicy"` //Use group poliy instead of AllowedHosts for checking access
 	GroupID        string   `json:"groupId"`        //GroupID is the group policy ID that the user belongs to
