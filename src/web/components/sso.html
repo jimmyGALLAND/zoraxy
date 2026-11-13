@@ -267,23 +267,23 @@
             </form>
             <div class="ui divider"></div>
             <section id="zorxAuthSystemSettings">
-                <h3>Système</h3>
-                <p>Paramètres du serveur SMTP utilisé pour les e-mails de vérification des adresses.</p>
+                <h3>System</h3>
+                <p>SMTP server settings used to send email address verification messages.</p>
                 <form class="ui form" id="zorxAuthSMTPSettings">
                     <div class="fields">
-                        <div class="ten wide field"><label for="zorxAuthSMTPHost">Hôte ou URL du serveur SMTP</label><input id="zorxAuthSMTPHost" type="text" placeholder="smtp.example.com ou smtp://smtp.example.com" required></div>
+                        <div class="ten wide field"><label for="zorxAuthSMTPHost">SMTP server host or URL</label><input id="zorxAuthSMTPHost" type="text" placeholder="smtp.example.com or smtp://smtp.example.com" required></div>
                         <div class="six wide field"><label for="zorxAuthSMTPPort">Port</label><input id="zorxAuthSMTPPort" type="number" min="1" max="65535" placeholder="587" required></div>
                     </div>
                     <div class="fields">
-                        <div class="eight wide field"><label for="zorxAuthSMTPSecurity">Sécurité</label><select id="zorxAuthSMTPSecurity" class="ui dropdown"><option value="starttls">STARTTLS</option><option value="tls">SSL/TLS implicite</option><option value="none">Aucune</option></select></div>
+                        <div class="eight wide field"><label for="zorxAuthSMTPSecurity">Security</label><select id="zorxAuthSMTPSecurity" class="ui dropdown"><option value="starttls">STARTTLS</option><option value="tls">Implicit SSL/TLS</option><option value="none">None</option></select></div>
                         <div class="eight wide field"><label for="zorxAuthSMTPUsername">Nom d'utilisateur</label><input id="zorxAuthSMTPUsername" type="text" autocomplete="off"></div>
                     </div>
-                    <div class="field"><label for="zorxAuthSMTPPassword">Mot de passe</label><input id="zorxAuthSMTPPassword" type="password" autocomplete="new-password" placeholder="Laisser vide pour conserver le mot de passe enregistré"><small id="zorxAuthSMTPPasswordStatus">Le mot de passe n'est jamais renvoyé par le serveur.</small></div>
+                    <div class="field"><label for="zorxAuthSMTPPassword">Password</label><input id="zorxAuthSMTPPassword" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved password"><small id="zorxAuthSMTPPasswordStatus">The password is never returned by the server.</small></div>
                     <div class="fields">
-                        <div class="eight wide field"><label for="zorxAuthSMTPFromEmail">Adresse expéditeur</label><input id="zorxAuthSMTPFromEmail" type="email" placeholder="noreply@example.com" required></div>
-                        <div class="eight wide field"><label for="zorxAuthSMTPFromName">Nom expéditeur</label><input id="zorxAuthSMTPFromName" type="text" placeholder="Zoraxy Auth"></div>
+                        <div class="eight wide field"><label for="zorxAuthSMTPFromEmail">Sender email address</label><input id="zorxAuthSMTPFromEmail" type="email" placeholder="noreply@example.com" required></div>
+                        <div class="eight wide field"><label for="zorxAuthSMTPFromName">Sender name</label><input id="zorxAuthSMTPFromName" type="text" placeholder="Zoraxy Auth"></div>
                     </div>
-                    <button class="ui basic button" type="submit"><i class="green check icon"></i> Enregistrer</button>
+                    <button class="ui basic button" type="submit"><i class="green check icon"></i> Save</button>
                 </form>
                 <div class="ui divider"></div>
                 <form class="ui form" id="zorxAuthSMTPTestForm">
@@ -1168,8 +1168,8 @@
             $('#zorxAuthSMTPFromEmail').val(data.fromEmail || '');
             $('#zorxAuthSMTPFromName').val(data.fromName || '');
             $('#zorxAuthSMTPPassword').val('');
-            $('#zorxAuthSMTPPasswordStatus').text(data.passwordConfigured ? 'Un mot de passe est enregistré. Laissez ce champ vide pour le conserver.' : 'Aucun mot de passe SMTP enregistré.');
-        },error:function(){msgbox('Impossible de charger la configuration SMTP',false);}});
+            $('#zorxAuthSMTPPasswordStatus').text(data.passwordConfigured ? 'A password is saved. Leave this field blank to keep it.' : 'No SMTP password is saved.');
+        },error:function(){msgbox('Unable to load SMTP settings',false);}});
     }
     $('#zorxAuthSMTPSettings').on('submit',function(event) {
         event.preventDefault();
@@ -1180,14 +1180,14 @@
             fromName:$('#zorxAuthSMTPFromName').val().trim()
         },success:function(data){
             if(data.error){msgbox(data.error,false);return;}
-            $('#zorxAuthSMTPPassword').val('');msgbox('Configuration SMTP enregistrée',true);getZorxAuthSMTPSettings();
-        },error:function(){msgbox('Échec de l’enregistrement de la configuration SMTP',false);}});
+            $('#zorxAuthSMTPPassword').val('');msgbox('SMTP settings saved',true);getZorxAuthSMTPSettings();
+        },error:function(){msgbox('Failed to save SMTP settings',false);}});
     });
     $('#zorxAuthSMTPTestForm').on('submit',function(event) {
         event.preventDefault();
         $.cjax({url:'/api/sso/zorxauth/email/smtp/test',method:'POST',data:{recipient:$('#zorxAuthSMTPTestRecipient').val().trim()},
-            success:function(data){if(data.error){msgbox(data.error,false);return;}msgbox('E-mail de test envoyé',true);},
-            error:function(){msgbox('Échec du test SMTP. Vérifiez les paramètres et les journaux.',false);}});
+            success:function(data){if(data.error){msgbox(data.error,false);return;}msgbox('Test email sent',true);},
+            error:function(){msgbox('SMTP test failed. Check the settings and logs.',false);}});
     });
 
     function setZorxAuthGatewayRunningState(gatewayEnabled, isRunning, gatewayPort) {
