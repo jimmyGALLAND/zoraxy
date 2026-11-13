@@ -294,20 +294,38 @@ func (gs *GatewayServer) handleResendEmailVerification(w http.ResponseWriter, r 
 	utils.SendOK(w)
 }
 
-// handleEmailVerification consumes a single-use verification token.
+// handleEmailVerification requires an explicit POST confirmation so automated
+// email link scanners cannot consume a single-use verification token.
 func (gs *GatewayServer) handleEmailVerification(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	token := strings.TrimSpace(r.URL.Query().Get("token"))
-	if err := gs.router.verifyEmailToken(token); err != nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Email verification</title><body><h1>Email verification failed</h1><p>%s</p></body></html>", html.EscapeString(err.Error()))
-		return
-	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprint(w, "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Email address verified</title><body><h1>Your email address has been verified</h1><p>You can close this page and return to the application.</p></body></html>")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+
+	switch r.Method {
+	case http.MethodGet:
+		token := strings.TrimSpace(r.URL.Query().Get("token"))
+		if token == "" {
+			http.Error(w, "Verification token is missing", http.StatusBadRequest)
+			return
+		}
+		_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Confirm email address</title></head><body><main><h1>Confirm your email address</h1><p>Select the button below to verify your email address.</p><form method=\"post\" action=\"/email/verify\"><input type=\"hidden\" name=\"token\" value=\"%s\"><button type=\"submit\">Verify email address</button></form></main></body></html>", html.EscapeString(token))
+	case http.MethodPost:
+		r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Invalid verification request", http.StatusBadRequest)
+			return
+		}
+		token := strings.TrimSpace(r.PostForm.Get("token"))
+		if err := gs.router.verifyEmailToken(token); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Email verification failed</title></head><body><h1>Email verification failed</h1><p>%s</p></body></html>", html.EscapeString(err.Error()))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Email address verified</title></head><body><h1>Your email address has been verified</h1><p>You can close this page and return to the application.</p></body></html>")
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
