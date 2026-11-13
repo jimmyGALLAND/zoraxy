@@ -55,6 +55,9 @@ func (config *EmailSMTPConfig) validate() error {
 	config.Security = strings.ToLower(strings.TrimSpace(config.Security))
 	config.FromEmail = strings.TrimSpace(config.FromEmail)
 	config.FromName = strings.TrimSpace(config.FromName)
+	if strings.ContainsAny(config.FromName, "\r\n") {
+		return errors.New("SMTP sender name must not contain line breaks")
+	}
 	config.Username = strings.TrimSpace(config.Username)
 
 	if config.Host == "" {
@@ -267,7 +270,7 @@ func (ar *AuthRouter) verifyEmailToken(token string) error {
 		if user.EmailVerificationTokenHash != expectedHash {
 			continue
 		}
-		if user.EmailVerificationExpiresAt.IsZero() || time.Now().After(user.EmailVerificationExpiresAt) {
+		if user.EmailVerificationExpiresAt.IsZero() || !time.Now().Before(user.EmailVerificationExpiresAt) {
 			user.EmailVerificationTokenHash = ""
 			user.EmailVerificationExpiresAt = time.Time{}
 			if err := ar.saveUser(user, user.Username); err != nil {
