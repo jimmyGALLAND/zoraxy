@@ -745,7 +745,7 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 	if hasOIDCScope(code.Scope, "email") && user.Email != "" {
 		idClaims["email"] = user.Email
-		idClaims["email_verified"] = false
+		idClaims["email_verified"] = user.EmailVerified
 	}
 	for name, raw := range user.OIDCCustomClaims {
 		if _, reserved := reservedOIDCCustomClaims[name]; reserved {
@@ -854,7 +854,7 @@ func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	if hasOIDCScope(scope, "email") && user.Email != "" {
 		response["email"] = user.Email
-		response["email_verified"] = false
+		response["email_verified"] = user.EmailVerified
 	}
 	for name, raw := range user.OIDCCustomClaims {
 		if _, reserved := reservedOIDCCustomClaims[name]; reserved {
