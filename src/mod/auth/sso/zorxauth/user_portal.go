@@ -311,6 +311,7 @@ func (gs *GatewayServer) handleEmailVerification(w http.ResponseWriter, r *http.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow, noarchive")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 
 	switch r.Method {
@@ -329,8 +330,11 @@ func (gs *GatewayServer) handleEmailVerification(w http.ResponseWriter, r *http.
 		}
 		token := strings.TrimSpace(r.PostForm.Get("token"))
 		if err := gs.router.verifyEmailToken(token); err != nil {
+			if gs.router.Logger != nil {
+				gs.router.Logger.PrintAndLog("zorxauth", "Email verification could not be completed: "+err.Error(), err)
+			}
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Email verification failed</title></head><body><h1>Email verification failed</h1><p>%s</p></body></html>", html.EscapeString(err.Error()))
+			_, _ = fmt.Fprint(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"robots\" content=\"noindex, nofollow, noarchive\"><title>Email verification failed</title></head><body><h1>Email verification failed</h1><p>This verification link is invalid or has expired. Please request a new verification email.</p></body></html>")
 			return
 		}
 		w.WriteHeader(http.StatusOK)
