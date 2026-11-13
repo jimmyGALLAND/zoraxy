@@ -21,7 +21,50 @@ const (
 	emailSMTPConfigKey       = "email_smtp"
 	emailVerificationLifetime = time.Hour
 	emailVerificationCooldown = time.Minute
+	emailVerificationIPLimit = 5
+	emailVerificationIPWindow = time.Minute
+	emailVerificationIPEntriesMax = 4096
 )
+
+type emailVerificationRateLimitEntry struct {
+	WindowStart time.Time
+	Count       int
+}
+
+// allowEmailVerificationRequest enforces a bounded per-IP fixed-window limit.
+// Expired entries are pruned on access so the in-memory map cannot grow indefinitely.
+func (ar *AuthRouter) allowEmailVerificationRequest(clientIP string, now time.Time) bool {
+	clientIP = strings.TrimSpace(clientIP)
+	if clientIP == "" {
+		return false
+	}
+
+	ar.emailVerificationRateLimitMutex.Lock()
+	defer ar.emailVerificationRateLimitMutex.Unlock()
+
+	if ar.emailVerificationRateLimits == nil {
+		ar.emailVerificationRateLimits = make(map[string]emailVerificationRateLimitEntry)
+	}
+	for ip, entry := range ar.emailVerificationRateLimits {
+		if now.Sub(entry.WindowStart) >= emailVerificationIPWindow || now.Before(entry.WindowStart) {
+			delete(ar.emailVerificationRateLimits, ip)
+		}
+	}
+
+	entry, exists := ar.emailVerificationRateLimits[clientIP]
+	if !exists {
+		if len(ar.emailVerificationRateLimits) >= emailVerificationIPEntriesMax {
+			return false
+		}
+		entry = emailVerificationRateLimitEntry{WindowStart: now}
+	}
+	if entry.Count >= emailVerificationIPLimit {
+		return false
+	}
+	entry.Count++
+	ar.emailVerificationRateLimits[clientIP] = entry
+	return true
+}
 
 type EmailSMTPConfig struct {
 	Host       string `json:"host"`
