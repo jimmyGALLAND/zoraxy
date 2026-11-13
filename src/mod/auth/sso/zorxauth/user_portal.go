@@ -304,10 +304,10 @@ func (gs *GatewayServer) handleEmailVerification(w http.ResponseWriter, r *http.
 	if err := gs.router.verifyEmailToken(token); err != nil {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Email verification</title><body><h1>Email verification failed</h1><p>%s</p></body></html>", html.EscapeString(err.Error()))
+		_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"fr\"><meta charset=\"utf-8\"><title>Vérification de l’adresse e-mail</title><body><h1>Échec de la vérification</h1><p>%s</p></body></html>", html.EscapeString(err.Error()))
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprint(w, "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Email verified</title><body><h1>Email address verified</h1><p>You can close this page and return to the application.</p></body></html>")
+	_, _ = fmt.Fprint(w, "<!doctype html><html lang=\"fr\"><meta charset=\"utf-8\"><title>Adresse e-mail vérifiée</title><body><h1>Votre adresse e-mail est vérifiée</h1><p>Vous pouvez fermer cette page et retourner à l’application.</p></body></html>")
 }
