@@ -407,6 +407,7 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	credentialsChanged := false
+	emailChanged := false
 	originalUsername := normalizeUsername(username)
 	newUsername := strings.TrimSpace(r.FormValue("newUsername"))
 	user, err := ar.updateUser(username, func(user *User) error {
@@ -419,9 +420,20 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 		if _, ok := r.Form["email"]; ok {
 			email := strings.TrimSpace(r.FormValue("email"))
 			if email != "" {
-				if _, err := mail.ParseAddress(email); err != nil {
+				parsed, err := mail.ParseAddress(email)
+				if err != nil || !strings.EqualFold(parsed.Address, email) {
 					return errors.New("invalid email format")
 				}
+			}
+
+			// A changed address must be verified again. Invalidate any outstanding
+			// link so it cannot verify an address that is no longer on the account.
+			if !strings.EqualFold(strings.TrimSpace(user.Email), email) {
+				emailChanged = true
+				user.EmailVerified = false
+				user.EmailVerificationTokenHash = ""
+				user.EmailVerificationExpiresAt = time.Time{}
+				user.EmailVerificationSentAt = time.Time{}
 			}
 			user.Email = email
 		}
