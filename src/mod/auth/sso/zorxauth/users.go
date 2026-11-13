@@ -417,6 +417,12 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serialize email changes with verification email delivery.
+	if _, hasEmail := r.Form["email"]; hasEmail {
+		ar.emailVerificationMutex.Lock()
+		defer ar.emailVerificationMutex.Unlock()
+	}
+
 	credentialsChanged := false
 	emailChanged := false
 	originalUsername := normalizeUsername(username)
@@ -501,7 +507,7 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if emailChanged && user.Email != "" {
-		if err := ar.createEmailVerification(user.Username); err != nil && ar.Logger != nil {
+		if err := ar.createEmailVerificationLocked(user.Username); err != nil && ar.Logger != nil {
 			ar.Logger.PrintAndLog("zorxauth", "Email address changed but verification email could not be sent: "+err.Error(), err)
 		}
 	}
