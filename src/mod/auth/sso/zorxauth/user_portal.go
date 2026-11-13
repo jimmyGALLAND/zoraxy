@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"html"
 	"image/png"
 	"net/http"
 	"strings"
@@ -57,6 +59,8 @@ func (gs *GatewayServer) handleUserPortalAPI(w http.ResponseWriter, r *http.Requ
 	switch sub {
 	case "info":
 		gs.handleUserInfo(w, r, username)
+	case "email/resend-verification":
+		gs.handleResendEmailVerification(w, r, username)
 	case "change-password":
 		gs.handleChangePassword(w, r, username)
 	case "2fa/setup":
@@ -94,6 +98,7 @@ func (gs *GatewayServer) handleUserInfo(w http.ResponseWriter, r *http.Request, 
 	js, _ := json.Marshal(map[string]interface{}{
 		"username":     u.Username,
 		"email":        u.Email,
+		"emailVerified": u.EmailVerified,
 		"enable2fa":    u.Enable2FA,
 		"passkeyCount": len(u.PasskeyCredentials),
 	})
@@ -272,4 +277,37 @@ func (gs *GatewayServer) handleDisableTOTP(w http.ResponseWriter, r *http.Reques
 	}
 
 	utils.SendOK(w)
+}
+
+
+// handleResendEmailVerification sends a fresh, rate-limited verification link
+// to the email address currently associated with the authenticated account.
+func (gs *GatewayServer) handleResendEmailVerification(w http.ResponseWriter, r *http.Request, username string) {
+	if r.Method != http.MethodPost {
+		utils.SendErrorResponse(w, "method not allowed")
+		return
+	}
+	if err := gs.router.createEmailVerification(username); err != nil {
+		utils.SendErrorResponse(w, err.Error())
+		return
+	}
+	utils.SendOK(w)
+}
+
+// handleEmailVerification consumes a single-use verification token.
+func (gs *GatewayServer) handleEmailVerification(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if err := gs.router.verifyEmailToken(token); err != nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Email verification</title><body><h1>Email verification failed</h1><p>%s</p></body></html>", html.EscapeString(err.Error()))
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprint(w, "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Email verified</title><body><h1>Email address verified</h1><p>You can close this page and return to the application.</p></body></html>")
 }
