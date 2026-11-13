@@ -288,7 +288,18 @@ func (gs *GatewayServer) handleResendEmailVerification(w http.ResponseWriter, r 
 		return
 	}
 	if err := gs.router.createEmailVerification(username); err != nil {
-		utils.SendErrorResponse(w, err.Error())
+		if strings.Contains(err.Error(), "please wait before requesting another verification email") {
+			utils.SendErrorResponse(w, "Please wait before requesting another verification email.")
+			return
+		}
+		if strings.Contains(err.Error(), "email address is already verified") {
+			utils.SendErrorResponse(w, "Your email address is already verified.")
+			return
+		}
+		if gs.router.Logger != nil {
+			gs.router.Logger.PrintAndLog("zorxauth", "Could not send email verification message: "+err.Error(), err)
+		}
+		utils.SendErrorResponse(w, "Unable to send the verification email. Please contact your administrator.")
 		return
 	}
 	utils.SendOK(w)
