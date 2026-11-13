@@ -117,6 +117,8 @@ func RegisterAuthenticationHandlerAPIs(authRouter *auth.RouterDef) {
 	authRouter.HandleFunc("/api/sso/OAuth2", oauth2Router.HandleSetOAuth2Settings)
 	authRouter.HandleFunc("/api/sso/zorxauth/provider", zorxAuthRouter.HandleAuthProviderSettings)
 	authRouter.HandleFunc("/api/sso/zorxauth/gateway", zorxAuthRouter.HandleGatewaySettings)
+	authRouter.HandleFunc("/api/sso/zorxauth/email/smtp", zorxAuthRouter.HandleEmailSMTPSettings)
+	authRouter.HandleFunc("/api/sso/zorxauth/email/smtp/test", zorxAuthRouter.HandleEmailSMTPTest)
 	authRouter.HandleFunc("/api/sso/zorxauth/oidc/clients", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
