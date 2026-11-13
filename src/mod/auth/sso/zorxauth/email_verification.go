@@ -34,7 +34,10 @@ type EmailSMTPConfig struct {
 
 func (ar *AuthRouter) loadEmailSMTPConfig() (*EmailSMTPConfig, error) {
 	config := &EmailSMTPConfig{}
-	if ar.Database == nil || !ar.Database.KeyExists(DB_NAME, emailSMTPConfigKey) {
+	if ar.Database == nil {
+		return nil, errors.New("database not available")
+	}
+	if !ar.Database.KeyExists(DB_NAME, emailSMTPConfigKey) {
 		return config, nil
 	}
 	if err := ar.Database.Read(DB_NAME, emailSMTPConfigKey, config); err != nil {
@@ -46,6 +49,9 @@ func (ar *AuthRouter) loadEmailSMTPConfig() (*EmailSMTPConfig, error) {
 func (ar *AuthRouter) saveEmailSMTPConfig(config *EmailSMTPConfig) error {
 	if config == nil {
 		return errors.New("SMTP configuration is missing")
+	}
+	if ar.Database == nil {
+		return errors.New("database not available")
 	}
 	return ar.Database.Write(DB_NAME, emailSMTPConfigKey, config)
 }
@@ -188,7 +194,10 @@ func (ar *AuthRouter) sendEmail(to, subject, body string) error {
 	if err := writer.Close(); err != nil {
 		return fmt.Errorf("SMTP message delivery failed: %w", err)
 	}
-	return client.Quit()
+	// The server has accepted the message after DATA completes. A QUIT failure
+	// must not invalidate the verification token or report delivery as failed.
+	_ = client.Quit()
+	return nil
 }
 
 func (ar *AuthRouter) createEmailVerification(username string) error {
@@ -239,14 +248,16 @@ func (ar *AuthRouter) createEmailVerificationLocked(username string) error {
 		"If you did not request this message, you can ignore it."
 	if err := ar.sendEmail(user.Email, "Verify your email address", body); err != nil {
 		// Do not keep a valid token when delivery failed.
-		_, _ = ar.updateUser(username, func(current *User) error {
+		if _, cleanupErr := ar.updateUser(username, func(current *User) error {
 			if current.EmailVerificationTokenHash == hex.EncodeToString(tokenHash[:]) {
 				current.EmailVerificationTokenHash = ""
 				current.EmailVerificationExpiresAt = time.Time{}
 				current.EmailVerificationSentAt = time.Time{}
 			}
 			return nil
-		})
+		}); cleanupErr != nil && ar.Logger != nil {
+			ar.Logger.PrintAndLog("zorxauth", "Failed to clear an undelivered email verification token: "+cleanupErr.Error(), cleanupErr)
+		}
 		return err
 	}
 	return nil
