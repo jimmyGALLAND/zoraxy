@@ -411,6 +411,13 @@
             <label>Email</label>
             <input type="email" id="infoEmail" readonly>
         </div>
+        <div class="twofa-status">
+            <span class="status-label">Email verification</span>
+            <span class="badge badge-disabled" id="emailVerificationBadge">Not verified</span>
+        </div>
+        <div class="alert alert-success" id="emailVerificationSuccess"></div>
+        <div class="alert alert-error" id="emailVerificationError"></div>
+        <button class="btn btn-secondary" id="resendEmailVerificationBtn" style="display:none">Send verification email</button>
     </div>
 
     <!-- Change Password -->
@@ -587,6 +594,7 @@
 
         const username     = data.username     || '';
         const email        = data.email        || '';
+        const emailVerified = !!data.emailVerified;
         const has2fa       = !!data.enable2fa;
 
         document.getElementById('displayUsername').textContent = username || '—';
@@ -597,6 +605,12 @@
         document.getElementById('displayEmail').textContent    = email || 'No email set';
         document.getElementById('infoUsername').value          = username;
         document.getElementById('infoEmail').value             = email;
+
+        const emailBadge = document.getElementById('emailVerificationBadge');
+        const resendButton = document.getElementById('resendEmailVerificationBtn');
+        emailBadge.textContent = emailVerified ? 'Verified' : (email ? 'Not verified' : 'No email address');
+        emailBadge.className = 'badge ' + (emailVerified ? 'badge-enabled' : 'badge-disabled');
+        resendButton.style.display = email && !emailVerified ? 'inline-block' : 'none';
 
         applyTwofaState(has2fa);
     }
@@ -624,6 +638,25 @@
     document.getElementById('logoutBtn').addEventListener('click', async () => {
         await fetch('/logout', { method: 'POST' });
         window.location.href = '/';
+    });
+
+    /* ── email verification ──────────────────────────────────────── */
+    document.getElementById('resendEmailVerificationBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('resendEmailVerificationBtn');
+        const success = document.getElementById('emailVerificationSuccess');
+        const error = document.getElementById('emailVerificationError');
+        hideAlert(success);
+        hideAlert(error);
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+        const { ok, data } = await apiPost('/user/api/email/resend-verification', {});
+        btn.disabled = false;
+        btn.textContent = 'Send verification email';
+        if (ok) {
+            showAlert(success, 'A verification email has been sent. Please check your inbox.');
+        } else {
+            showAlert(error, (data && data.error) || 'Unable to send the verification email.');
+        }
     });
 
     /* ── change password ─────────────────────────────────────────── */
