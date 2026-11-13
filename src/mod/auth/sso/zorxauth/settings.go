@@ -359,6 +359,10 @@ func (ar *AuthRouter) HandleEmailSMTPSettings(w http.ResponseWriter, r *http.Req
 		}
 		utils.SendOK(w)
 	case http.MethodDelete:
+		if ar.Database == nil {
+			utils.SendErrorResponse(w, "database not available")
+			return
+		}
 		if err := ar.Database.Delete(DB_NAME, emailSMTPConfigKey); err != nil {
 			utils.SendErrorResponse(w, "failed to clear SMTP settings")
 			return
