@@ -15,6 +15,7 @@ import (
 
 	"github.com/pquerna/otp/totp"
 	"imuslab.com/zoraxy/mod/utils"
+	"imuslab.com/zoraxy/mod/netutils"
 )
 
 //go:embed user.html
@@ -287,6 +288,16 @@ func (gs *GatewayServer) handleResendEmailVerification(w http.ResponseWriter, r 
 		utils.SendErrorResponse(w, "method not allowed")
 		return
 	}
+
+	clientIP := netutils.GetRequesterIPUntrusted(r)
+	if !gs.router.allowEmailVerificationRequest(clientIP, time.Now()) {
+		w.Header().Set("Retry-After", "60")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte("{\"error\":\"Too many verification email requests. Please try again later.\"}"))
+		return
+	}
+
 	if err := gs.router.createEmailVerification(username); err != nil {
 		if strings.Contains(err.Error(), "please wait before requesting another verification email") {
 			utils.SendErrorResponse(w, "Please wait before requesting another verification email.")
