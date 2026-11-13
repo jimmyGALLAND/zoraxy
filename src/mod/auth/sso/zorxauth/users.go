@@ -407,7 +407,6 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	credentialsChanged := false
-	emailChanged := false
 	originalUsername := normalizeUsername(username)
 	newUsername := strings.TrimSpace(r.FormValue("newUsername"))
 	user, err := ar.updateUser(username, func(user *User) error {
@@ -429,7 +428,6 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 			// A changed address must be verified again. Invalidate any outstanding
 			// link so it cannot verify an address that is no longer on the account.
 			if !strings.EqualFold(strings.TrimSpace(user.Email), email) {
-				emailChanged = true
 				user.EmailVerified = false
 				user.EmailVerificationTokenHash = ""
 				user.EmailVerificationExpiresAt = time.Time{}
