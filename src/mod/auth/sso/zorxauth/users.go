@@ -407,6 +407,7 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	credentialsChanged := false
+	emailChanged := false
 	originalUsername := normalizeUsername(username)
 	newUsername := strings.TrimSpace(r.FormValue("newUsername"))
 	user, err := ar.updateUser(username, func(user *User) error {
@@ -428,6 +429,7 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 			// A changed address must be verified again. Invalidate any outstanding
 			// link so it cannot verify an address that is no longer on the account.
 			if !strings.EqualFold(strings.TrimSpace(user.Email), email) {
+				emailChanged = true
 				user.EmailVerified = false
 				user.EmailVerificationTokenHash = ""
 				user.EmailVerificationExpiresAt = time.Time{}
@@ -484,6 +486,12 @@ func (ar *AuthRouter) HandleUserUpdate(w http.ResponseWriter, r *http.Request) {
 		if !strings.EqualFold(originalUsername, user.Username) {
 			// saveUser remaps pending SSO callbacks when a username changes.
 			ar.invalidateUserSessions(user.Username)
+		}
+	}
+
+	if emailChanged && user.Email != "" {
+		if err := ar.createEmailVerification(user.Username); err != nil && ar.Logger != nil {
+			ar.Logger.PrintAndLog("zorxauth", "Email address changed but verification email could not be sent: "+err.Error(), err)
 		}
 	}
 
