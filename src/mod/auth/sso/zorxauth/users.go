@@ -365,6 +365,17 @@ func (ar *AuthRouter) HandleUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Send the initial verification message after the current request releases
+	// the user mutation lock. Delivery failures are logged without rolling back
+	// the account creation.
+	if user.Email != "" {
+		go func(username string) {
+			if err := ar.createEmailVerification(username); err != nil && ar.Logger != nil {
+				ar.Logger.PrintAndLog("zorxauth", "New account created but its email verification message could not be sent: "+err.Error(), err)
+			}
+		}(user.Username)
+	}
+
 	utils.SendOK(w)
 }
 
