@@ -68,11 +68,18 @@ func (config *EmailSMTPConfig) validate() error {
 	default:
 		return errors.New("SMTP security must be none, starttls, or tls")
 	}
-	if config.Security == "none" && config.Username != "" {
+	if config.Security == "none" && (config.Username != "" || config.Password != "") {
 		return errors.New("SMTP authentication requires STARTTLS or SSL/TLS")
 	}
-	if _, err := mail.ParseAddress(config.FromEmail); err != nil {
-		return errors.New("a valid sender email address is required")
+	if config.Username != "" && config.Password == "" {
+		return errors.New("SMTP password is required when a username is configured")
+	}
+	sender, err := mail.ParseAddress(config.FromEmail)
+	if err != nil || sender.Address != config.FromEmail {
+		return errors.New("a valid sender email address without a display name is required")
+	}
+	if strings.Contains(config.Host, "://") || strings.ContainsAny(config.Host, "/\\") {
+		return errors.New("SMTP host must be a hostname or IP address, not a URL")
 	}
 	return nil
 }
@@ -167,6 +174,11 @@ func (ar *AuthRouter) createEmailVerification(username string) error {
 	token := hex.EncodeToString(rawToken[:])
 	tokenHash := sha256.Sum256([]byte(token))
 	now := time.Now()
+	baseURL := strings.TrimRight(ar.OIDCIssuer(), "/")
+	parsedURL, err := url.Parse(baseURL)
+	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" {
+		return errors.New("OIDC issuer must be configured with an absolute public URL before email verification can be sent")
+	}
 
 	user, err := ar.updateUser(username, func(user *User) error {
 		if user.Email == "" {
@@ -187,11 +199,6 @@ func (ar *AuthRouter) createEmailVerification(username string) error {
 		return err
 	}
 
-	baseURL := strings.TrimRight(ar.OIDCIssuer(), "/")
-	parsedURL, err := url.Parse(baseURL)
-	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" {
-		return errors.New("OIDC issuer must be configured with an absolute public URL before email verification can be sent")
-	}
 	verifyURL := baseURL + "/email/verify?token=" + url.QueryEscape(token)
 	body := "Hello " + user.Username + ",\n\n" +
 		"Please confirm your email address by opening the following link:\n" + verifyURL + "\n\n" +
