@@ -304,3 +304,89 @@ func (ar *AuthRouter) HandleLogoutAllUsers(w http.ResponseWriter, r *http.Reques
 
 	utils.SendOK(w)
 }
+
+
+// HandleEmailSMTPSettings manages the SMTP configuration used for account email verification.
+// The stored password is never included in API responses.
+func (ar *AuthRouter) HandleEmailSMTPSettings(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		config, err := ar.loadEmailSMTPConfig()
+		if err != nil {
+			utils.SendErrorResponse(w, "failed to load SMTP settings")
+			return
+		}
+		utils.SendJSONResponse(w, mustMarshalJSON(map[string]interface{}{
+			"host": config.Host, "port": config.Port, "security": config.Security,
+			"username": config.Username, "fromEmail": config.FromEmail, "fromName": config.FromName,
+			"passwordConfigured": config.Password != "",
+		}))
+	case http.MethodPost:
+		var request struct {
+			Host string `json:"host"`
+			Port int `json:"port"`
+			Security string `json:"security"`
+			Username string `json:"username"`
+			Password string `json:"password"`
+			FromEmail string `json:"fromEmail"`
+			FromName string `json:"fromName"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&request); err != nil {
+			utils.SendErrorResponse(w, "invalid SMTP settings")
+			return
+		}
+		config, err := ar.loadEmailSMTPConfig()
+		if err != nil {
+			utils.SendErrorResponse(w, "failed to load existing SMTP settings")
+			return
+		}
+		config.Host, config.Port, config.Security = request.Host, request.Port, request.Security
+		config.Username, config.FromEmail, config.FromName = request.Username, request.FromEmail, request.FromName
+		if request.Password != "" {
+			config.Password = request.Password
+		}
+		if err := config.validate(); err != nil {
+			utils.SendErrorResponse(w, err.Error())
+			return
+		}
+		if err := ar.saveEmailSMTPConfig(config); err != nil {
+			utils.SendErrorResponse(w, "failed to save SMTP settings")
+			return
+		}
+		utils.SendOK(w)
+	case http.MethodDelete:
+		if err := ar.Database.Delete(DB_NAME, emailSMTPConfigKey); err != nil {
+			utils.SendErrorResponse(w, "failed to clear SMTP settings")
+			return
+		}
+		utils.SendOK(w)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// HandleEmailSMTPTest sends a test message to the supplied recipient using the saved configuration.
+func (ar *AuthRouter) HandleEmailSMTPTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	recipient, err := utils.PostPara(r, "recipient")
+	if err != nil || strings.TrimSpace(recipient) == "" {
+		utils.SendErrorResponse(w, "recipient email is required")
+		return
+	}
+	if err := ar.sendEmail(recipient, "Zoraxy Auth SMTP test", "This is a test message from Zoraxy Auth. SMTP settings are working."); err != nil {
+		if ar.Logger != nil {
+			ar.Logger.PrintAndLog("zorxauth", "SMTP test delivery failed: "+err.Error(), err)
+		}
+		utils.SendErrorResponse(w, "SMTP test failed; check the server logs and configuration")
+		return
+	}
+	utils.SendOK(w)
+}
+
+func mustMarshalJSON(value interface{}) string {
+	data, _ := json.Marshal(value)
+	return string(data)
+}
