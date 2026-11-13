@@ -331,7 +331,8 @@ func (ar *AuthRouter) HandleUserCreate(w http.ResponseWriter, r *http.Request) {
 
 	email := strings.TrimSpace(r.FormValue("email"))
 	if email != "" {
-		if _, err := mail.ParseAddress(email); err != nil {
+		parsed, err := mail.ParseAddress(email)
+		if err != nil || !strings.EqualFold(parsed.Address, email) {
 			utils.SendErrorResponse(w, "invalid email format")
 			return
 		}
@@ -526,6 +527,10 @@ func (ar *AuthRouter) HandleUserDelete(w http.ResponseWriter, r *http.Request) {
 		utils.SendErrorResponse(w, "missing username")
 		return
 	}
+
+	// Prevent account deletion while a verification message is being issued.
+	ar.emailVerificationMutex.Lock()
+	defer ar.emailVerificationMutex.Unlock()
 
 	ar.userMutationMutex.Lock()
 	user, err := ar.getUserByUsername(username)
