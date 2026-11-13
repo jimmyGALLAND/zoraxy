@@ -2,6 +2,7 @@ package zorxauth
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
@@ -331,7 +332,14 @@ func (ar *AuthRouter) HandleEmailSMTPSettings(w http.ResponseWriter, r *http.Req
 			FromEmail string `json:"fromEmail"`
 			FromName string `json:"fromName"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&request); err != nil {
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&request); err != nil {
+			utils.SendErrorResponse(w, "invalid SMTP settings")
+			return
+		}
+		// Reject concatenated JSON values and trailing non-whitespace data.
+		if err := decoder.Decode(&struct{}{}); err != io.EOF {
 			utils.SendErrorResponse(w, "invalid SMTP settings")
 			return
 		}
