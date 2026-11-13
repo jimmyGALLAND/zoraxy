@@ -113,21 +113,28 @@ func (ar *AuthRouter) sendEmail(to, subject, body string) error {
 	}
 
 	address := net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
-	var client *smtp.Client
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	var conn net.Conn
 	if config.Security == "tls" {
-		conn, dialErr := tls.Dial("tcp", address, &tls.Config{
+		conn, err = tls.DialWithDialer(dialer, "tcp", address, &tls.Config{
 			ServerName: config.Host,
 			MinVersion: tls.VersionTLS12,
 		})
-		if dialErr != nil {
-			return fmt.Errorf("SMTP TLS connection failed: %w", dialErr)
-		}
-		client, err = smtp.NewClient(conn, config.Host)
 	} else {
-		client, err = smtp.Dial(address)
+		conn, err = dialer.Dial("tcp", address)
 	}
 	if err != nil {
 		return fmt.Errorf("SMTP connection failed: %w", err)
+	}
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("could not set SMTP connection deadline: %w", err)
+	}
+
+	client, err := smtp.NewClient(conn, config.Host)
+	if err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("SMTP client initialization failed: %w", err)
 	}
 	defer client.Close()
 
@@ -225,6 +232,7 @@ func (ar *AuthRouter) createEmailVerification(username string) error {
 			if current.EmailVerificationTokenHash == hex.EncodeToString(tokenHash[:]) {
 				current.EmailVerificationTokenHash = ""
 				current.EmailVerificationExpiresAt = time.Time{}
+				current.EmailVerificationSentAt = time.Time{}
 			}
 			return nil
 		})
@@ -254,7 +262,9 @@ func (ar *AuthRouter) verifyEmailToken(token string) error {
 		if user.EmailVerificationExpiresAt.IsZero() || time.Now().After(user.EmailVerificationExpiresAt) {
 			user.EmailVerificationTokenHash = ""
 			user.EmailVerificationExpiresAt = time.Time{}
-			_ = ar.saveUser(user, user.Username)
+			if err := ar.saveUser(user, user.Username); err != nil {
+				return errors.New("could not clear expired email verification token")
+			}
 			return errors.New("verification link is invalid or has expired")
 		}
 		user.EmailVerified = true
