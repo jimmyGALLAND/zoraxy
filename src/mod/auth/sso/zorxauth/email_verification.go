@@ -3,6 +3,7 @@ package zorxauth
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
 	"encoding/hex"
 	"errors"
@@ -267,8 +268,10 @@ func (ar *AuthRouter) verifyEmailToken(token string) error {
 	if len(token) != 64 {
 		return errors.New("verification link is invalid or has expired")
 	}
+	if _, err := hex.DecodeString(token); err != nil {
+		return errors.New("verification link is invalid or has expired")
+	}
 	sum := sha256.Sum256([]byte(token))
-	expectedHash := hex.EncodeToString(sum[:])
 
 	ar.userMutationMutex.Lock()
 	defer ar.userMutationMutex.Unlock()
@@ -278,7 +281,11 @@ func (ar *AuthRouter) verifyEmailToken(token string) error {
 		return errors.New("could not load user records")
 	}
 	for _, user := range users {
-		if user.EmailVerificationTokenHash != expectedHash {
+		storedHash, err := hex.DecodeString(user.EmailVerificationTokenHash)
+		if err != nil || len(storedHash) != sha256.Size {
+			continue
+		}
+		if subtle.ConstantTimeCompare(storedHash, sum[:]) != 1 {
 			continue
 		}
 		if user.EmailVerificationExpiresAt.IsZero() || !time.Now().Before(user.EmailVerificationExpiresAt) {
