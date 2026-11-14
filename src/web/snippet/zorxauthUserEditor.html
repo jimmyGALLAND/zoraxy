@@ -93,12 +93,21 @@
 						</div>
 					</div>
 					<div class="field">
-						<label>OIDC custom claims <small class="passwordHint">(JSON object)</small></label>
-						<textarea id="editOIDCCustomClaims" rows="6" spellcheck="false" placeholder='{
-  "immich_role": "admin",
-  "immich_quota": 500
-}'></textarea>
-						<small class="passwordHint">These claims are included in the ID token and UserInfo response for every OIDC client used by this account. Standard OIDC claims cannot be overridden.</small>
+						<div class="ui divider"></div>
+						<h4 class="ui header">OIDC Claims</h4>
+						<p class="passwordHint">Standard claims are included only when the corresponding scope is requested by the OIDC client. Protocol claims are generated automatically and are not configurable here.</p>
+						<div class="ui segment" style="padding:0.8em;">
+							<div class="two fields">
+								<div class="field"><label>sub <small class="passwordHint">(read-only)</small></label><input id="editOIDCSub" type="text" readonly disabled></div>
+								<div class="field"><label>preferred_username <small class="passwordHint">(from Username)</small></label><input id="editOIDCPreferredUsername" type="text" readonly disabled></div>
+							</div>
+							<div class="field"><label>email <small class="passwordHint">(from Email)</small></label><input id="editOIDCEmail" type="text" readonly disabled></div>
+							<div id="editOIDCStandardClaims" class="ui form"></div>
+						</div>
+						<div class="ui divider"></div>
+						<label>Custom Claims</label>
+						<div id="editOIDCCustomClaimsList"></div>
+						<button class="ui mini basic button" type="button" onclick="addOIDCCustomClaim();"><i class="add icon"></i> Add custom claim</button>
 					</div>
 					<div id="editHostsSection">
 					<div class="field">
@@ -436,7 +445,7 @@
                         accessDisplay = '<span style="opacity:0.5;">all hosts</span>';
                     }
                     const emailDisplay = escapeHtml(user.email) || '<span style="opacity:0.5;">—</span>';
-                    body.append(`<tr class="userRow" data-username="${escapeHtml(user.username)}" data-email="${escapeHtml(user.email)}" data-allowedhosts="${escapeHtml(normalizeHostsForInput(user.allowedHosts))}" data-usegrouppolicy="${user.useGroupPolicy ? '1' : '0'}" data-groupid="${escapeHtml(user.groupId || '')}" data-enable2fa="${user.enable2FA ? '1' : '0'}" data-oidccustomclaims="${escapeHtml(JSON.stringify(user.oidcCustomClaims || {}))}">
+                    body.append(`<tr class="userRow" data-userid="${escapeHtml(user.id || '')}" data-username="${escapeHtml(user.username)}" data-email="${escapeHtml(user.email)}" data-allowedhosts="${escapeHtml(normalizeHostsForInput(user.allowedHosts))}" data-usegrouppolicy="${user.useGroupPolicy ? '1' : '0'}" data-groupid="${escapeHtml(user.groupId || '')}" data-enable2fa="${user.enable2FA ? '1' : '0'}" data-oidccustomclaims="${escapeHtml(JSON.stringify(user.oidcCustomClaims || {}))}">
                         <td>${escapeHtml(user.username)}</td>
                         <td>${emailDisplay}</td>
                         <td>${accessDisplay}</td>
@@ -447,6 +456,87 @@
                     </tr>`);
                 });
 			}
+
+			const oidcStandardClaimFields = [
+				["name","Name","text"],["given_name","Given name","text"],["family_name","Family name","text"],
+				["middle_name","Middle name","text"],["nickname","Nickname","text"],["profile","Profile URL","url"],
+				["picture","Picture URL","url"],["website","Website URL","url"],["gender","Gender","text"],
+				["birthdate","Birthdate","date"],["zoneinfo","Time zone","text"],["locale","Locale","text"],
+				["updated_at","Updated at (Unix timestamp)","number"],["phone_number","Phone number","tel"]
+			];
+
+			function renderOIDCStandardClaims(claims){
+				const container = $('#editOIDCStandardClaims').empty();
+				oidcStandardClaimFields.forEach(function(field){
+					const name = field[0], label = field[1], type = field[2];
+					const value = claims[name] === undefined || claims[name] === null ? '' : claims[name];
+					container.append('<div class="field"><label>' + escapeHtml(name) + ' <small class="passwordHint">(' + escapeHtml(label) + ')</small></label><input class="oidc-standard-claim" data-claim="' + escapeHtml(name) + '" type="' + type + '" value="' + escapeHtml(value) + '"></div>');
+				});
+				const verified = claims.email_verified === true;
+				container.append('<div class="field"><div class="ui checkbox"><input class="oidc-standard-claim-bool" data-claim="email_verified" type="checkbox" ' + (verified ? 'checked' : '') + '><label>email_verified</label></div></div>');
+				const phoneVerified = claims.phone_number_verified === true;
+				container.append('<div class="field"><div class="ui checkbox"><input class="oidc-standard-claim-bool" data-claim="phone_number_verified" type="checkbox" ' + (phoneVerified ? 'checked' : '') + '><label>phone_number_verified</label></div></div>');
+				const address = claims.address && typeof claims.address === 'object' ? claims.address : {};
+				const addressFields = [["formatted","Formatted"],["street_address","Street address"],["locality","Locality"],["region","Region"],["postal_code","Postal code"],["country","Country"]];
+				let addressHtml = '<div class="field"><label>address</label><div class="ui segment" style="padding:0.7em;">';
+				addressFields.forEach(function(field){
+					addressHtml += '<div class="field"><label>' + field[1] + '</label><input class="oidc-address-field" data-address-field="' + field[0] + '" type="text" value="' + escapeHtml(address[field[0]] || '') + '"></div>';
+				});
+				addressHtml += '</div></div>';
+				container.append(addressHtml);
+			}
+
+			function renderOIDCCustomClaims(claims){
+				const container = $('#editOIDCCustomClaimsList').empty();
+				Object.keys(claims || {}).forEach(function(name){
+					if (oidcStandardClaimNames.indexOf(name) !== -1 || name === 'sub' || name === 'email' || name === 'preferred_username') return;
+					addOIDCCustomClaim(name, claims[name]);
+				});
+			}
+			const oidcStandardClaimNames = oidcStandardClaimFields.map(function(field){ return field[0]; }).concat(['email_verified','phone_number_verified','address']);
+
+			function addOIDCCustomClaim(name, value){
+				const row = $('<div class="two fields oidc-custom-claim-row" style="align-items:flex-end;"></div>');
+				const nameField = $('<div class="field"><label>Claim name</label><input class="oidc-custom-claim-name" type="text" placeholder="custom_claim"></div>');
+				const valueField = $('<div class="field"><label>Value</label><input class="oidc-custom-claim-value" type="text" placeholder="Value"></div>');
+				const remove = $('<div class="field" style="flex:0 0 auto;"><button class="ui mini basic red icon button" type="button" title="Remove custom claim"><i class="trash icon"></i></button></div>');
+				if(name !== undefined) nameField.find('input').val(name);
+				if(value !== undefined && value !== null) valueField.find('input').val(typeof value === 'string' ? value : JSON.stringify(value));
+				remove.find('button').on('click', function(){ row.remove(); });
+				row.append(nameField, valueField, remove);
+				$('#editOIDCCustomClaimsList').append(row);
+			}
+
+			function collectOIDCClaims(){
+				const claims = {};
+				$('#editOIDCStandardClaims .oidc-standard-claim').each(function(){
+					const value = $(this).val().trim();
+					if(value !== '') claims[$(this).attr('data-claim')] = $(this).attr('type') === 'number' ? Number(value) : value;
+				});
+				$('#editOIDCStandardClaims .oidc-standard-claim-bool').each(function(){
+					claims[$(this).attr('data-claim')] = $(this).is(':checked');
+				});
+				const address = {};
+				$('#editOIDCStandardClaims .oidc-address-field').each(function(){
+					const value = $(this).val().trim();
+					if(value !== '') address[$(this).attr('data-address-field')] = value;
+				});
+				if(Object.keys(address).length) claims.address = address;
+				const customNames = new Set();
+				let invalid = false;
+				$('#editOIDCCustomClaimsList .oidc-custom-claim-row').each(function(){
+					const name = $(this).find('.oidc-custom-claim-name').val().trim();
+					const value = $(this).find('.oidc-custom-claim-value').val();
+					if(!name || !/^[A-Za-z][A-Za-z0-9_:-]*$/.test(name) || oidcReservedClaimNames.has(name) || oidcStandardClaimNames.indexOf(name) !== -1 || customNames.has(name)){
+						invalid = true; return false;
+					}
+					customNames.add(name);
+					if(value !== '') claims[name] = value;
+				});
+				if(invalid){ notify('Custom claim names must be unique and must not conflict with standard or protocol claims.', false); return null; }
+				return claims;
+			}
+			const oidcReservedClaimNames = new Set(['iss','sub','aud','exp','iat','nbf','jti','nonce','azp','auth_time','at_hash','c_hash','token_use','scope','amr','acr']);
 
 			function openEditUser(btn){
 				const row = $(btn).closest('.userRow');
@@ -462,7 +552,11 @@
 				$('#editUsername').val(username);
 				$('#editEmail').val(email);
 				$('#editPassword').val('');
-				$('#editOIDCCustomClaims').val(JSON.stringify(customClaims, null, 2));
+				$('#editOIDCSub').val(row.attr('data-userid') || '');
+				$('#editOIDCPreferredUsername').val(username);
+				$('#editOIDCEmail').val(email);
+				renderOIDCStandardClaims(customClaims);
+				renderOIDCCustomClaims(customClaims);
 				populateHostTable('editHostsTable', allowedHosts);
 				$('#editUsernameLabel').text(username);
 
@@ -570,14 +664,8 @@
 				const password = $('#editPassword').val();
 				const useGroupPolicy = $('#editUseGroupPolicy').is(':checked');
 				const groupId = useGroupPolicy ? $('#editGroupId').val() : '';
-				let oidcCustomClaims;
-				try {
-					oidcCustomClaims = JSON.parse($('#editOIDCCustomClaims').val() || '{}');
-					if (!oidcCustomClaims || Array.isArray(oidcCustomClaims) || typeof oidcCustomClaims !== 'object') throw new Error('Expected a JSON object');
-				} catch (e) {
-					notify('OIDC custom claims must be a valid JSON object', false);
-					return;
-				}
+				const oidcCustomClaims = collectOIDCClaims();
+				if(oidcCustomClaims === null) return;
 
 				if (newUsername === ''){
 					notify('Username cannot be empty', false);
