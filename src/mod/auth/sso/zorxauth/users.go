@@ -373,6 +373,54 @@ var reservedOIDCCustomClaims = map[string]struct{}{
 	"preferred_username": {}, "amr": {}, "acr": {},
 }
 
+
+var standardOIDCProfileClaims = map[string]struct{}{
+	"name": {}, "given_name": {}, "family_name": {}, "middle_name": {}, "nickname": {},
+	"profile": {}, "picture": {}, "website": {}, "gender": {}, "birthdate": {},
+	"zoneinfo": {}, "locale": {}, "updated_at": {},
+}
+
+var standardOIDCUserClaims = map[string]struct{}{
+	"name": {}, "given_name": {}, "family_name": {}, "middle_name": {}, "nickname": {},
+	"profile": {}, "picture": {}, "website": {}, "gender": {}, "birthdate": {},
+	"zoneinfo": {}, "locale": {}, "updated_at": {}, "email_verified": {},
+	"phone_number": {}, "phone_number_verified": {}, "address": {},
+}
+
+func isStandardOIDCUserClaim(name string) bool {
+	_, ok := standardOIDCUserClaims[name]
+	return ok
+}
+
+func validateOIDCUserClaimValue(name string, raw json.RawMessage) error {
+	if !isStandardOIDCUserClaim(name) {
+		return nil
+	}
+	var value interface{}
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return errors.New("invalid value for OIDC claim: " + name)
+	}
+	switch name {
+	case "email_verified", "phone_number_verified":
+		if _, ok := value.(bool); !ok {
+			return errors.New(name + " must be a boolean")
+		}
+	case "updated_at":
+		if _, ok := value.(float64); !ok {
+			return errors.New("updated_at must be a number")
+		}
+	case "address":
+		if _, ok := value.(map[string]interface{}); !ok {
+			return errors.New("address must be an object")
+		}
+	default:
+		if _, ok := value.(string); !ok {
+			return errors.New(name + " must be a string")
+		}
+	}
+	return nil
+}
+
 func parseOIDCCustomClaims(raw string) (map[string]json.RawMessage, error) {
 	if len(raw) > 32*1024 {
 		return nil, errors.New("OIDC custom claims must not exceed 32 KiB")
@@ -381,12 +429,15 @@ func parseOIDCCustomClaims(raw string) (map[string]json.RawMessage, error) {
 	if err := json.Unmarshal([]byte(raw), &claims); err != nil || claims == nil {
 		return nil, errors.New("OIDC custom claims must be a valid JSON object")
 	}
-	for name := range claims {
+	for name, rawValue := range claims {
 		if name == "" || name != strings.TrimSpace(name) {
-			return nil, errors.New("OIDC custom claim names cannot be empty")
+			return nil, errors.New("OIDC claim names cannot be empty")
 		}
-		if _, reserved := reservedOIDCCustomClaims[name]; reserved {
-			return nil, errors.New("OIDC custom claim name is reserved: " + name)
+		if _, reserved := reservedOIDCCustomClaims[name]; reserved && !isStandardOIDCUserClaim(name) {
+			return nil, errors.New("OIDC claim name is reserved: " + name)
+		}
+		if err := validateOIDCUserClaimValue(name, rawValue); err != nil {
+			return nil, err
 		}
 	}
 	return claims, nil
