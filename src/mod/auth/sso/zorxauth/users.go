@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/mail"
 	"regexp"
@@ -375,11 +376,7 @@ var reservedOIDCCustomClaims = map[string]struct{}{
 }
 
 
-var standardOIDCProfileClaims = map[string]struct{}{
-	"name": {}, "given_name": {}, "family_name": {}, "middle_name": {}, "nickname": {},
-	"profile": {}, "picture": {}, "website": {}, "gender": {}, "birthdate": {},
-	"zoneinfo": {}, "locale": {}, "updated_at": {},
-}
+var oidcClaimNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_:-]*$`)
 
 var standardOIDCUserClaims = map[string]struct{}{
 	"name": {}, "given_name": {}, "family_name": {}, "middle_name": {}, "nickname": {},
@@ -407,8 +404,9 @@ func validateOIDCUserClaimValue(name string, raw json.RawMessage) error {
 			return errors.New(name + " must be a boolean")
 		}
 	case "updated_at":
-		if _, ok := value.(float64); !ok {
-			return errors.New("updated_at must be a number")
+		timestamp, ok := value.(float64)
+		if !ok || timestamp < 0 || math.Trunc(timestamp) != timestamp {
+			return errors.New("updated_at must be a non-negative integer")
 		}
 	case "address":
 		address, ok := value.(map[string]interface{})
