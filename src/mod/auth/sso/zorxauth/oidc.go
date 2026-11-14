@@ -377,7 +377,7 @@ func (p *oidcProvider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		"token_endpoint": issuer + "/oidc/token", "userinfo_endpoint": issuer + "/oidc/userinfo",
 		"jwks_uri": issuer + "/oidc/jwks", "end_session_endpoint": issuer + "/oidc/logout", "response_types_supported": []string{"code"},
 		"subject_types_supported": []string{"public"}, "id_token_signing_alg_values_supported": []string{"RS256"},
-		"scopes_supported": []string{"openid", "profile", "email"},
+		"scopes_supported": []string{"openid", "profile", "email", "phone", "address"},
 		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"},
 		"code_challenge_methods_supported": []string{"S256"},
 		"grant_types_supported": []string{"authorization_code"},
@@ -739,21 +739,8 @@ func (p *oidcProvider) handleToken(w http.ResponseWriter, r *http.Request) {
 	if code.Nonce != "" {
 		idClaims["nonce"] = code.Nonce
 	}
-	if hasOIDCScope(code.Scope, "profile") {
-		idClaims["preferred_username"] = user.Username
-	}
-	if hasOIDCScope(code.Scope, "email") && user.Email != "" {
-		idClaims["email"] = user.Email
-		idClaims["email_verified"] = false
-	}
-	for name, raw := range user.OIDCCustomClaims {
-		if _, reserved := reservedOIDCCustomClaims[name]; reserved {
-			continue
-		}
-		var value interface{}
-		if json.Unmarshal(raw, &value) == nil {
-			idClaims[name] = value
-		}
+	for name, value := range buildOIDCUserClaims(user, code.Scope) {
+		idClaims[name] = value
 	}
 	idToken, err := p.signJWT(idClaims)
 	if err != nil {
@@ -848,23 +835,57 @@ func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	response := map[string]interface{}{"sub": stableOIDCSubject(user)}
 	scope, _ := claims["scope"].(string)
+	for name, value := range buildOIDCUserClaims(user, scope) {
+		response[name] = value
+	}
+	writeOIDCJSON(w, http.StatusOK, response)
+}
+
+
+func buildOIDCUserClaims(user *User, scope string) map[string]interface{} {
+	result := make(map[string]interface{})
+	if user == nil {
+		return result
+	}
 	if hasOIDCScope(scope, "profile") {
-		response["preferred_username"] = user.Username
+		result["preferred_username"] = user.Username
 	}
 	if hasOIDCScope(scope, "email") && user.Email != "" {
-		response["email"] = user.Email
-		response["email_verified"] = false
+		result["email"] = user.Email
+		result["email_verified"] = false
 	}
 	for name, raw := range user.OIDCCustomClaims {
-		if _, reserved := reservedOIDCCustomClaims[name]; reserved {
+		if !isStandardOIDCUserClaim(name) {
+			if _, reserved := reservedOIDCCustomClaims[name]; reserved {
+				continue
+			}
+			var value interface{}
+			if json.Unmarshal(raw, &value) == nil {
+				result[name] = value
+			}
+			continue
+		}
+		if _, reserved := reservedOIDCCustomClaims[name]; reserved && !isStandardOIDCUserClaim(name) {
+			continue
+		}
+		requiredScope := "profile"
+		switch name {
+		case "email_verified":
+			requiredScope = "email"
+		case "phone_number", "phone_number_verified":
+			requiredScope = "phone"
+		case "address":
+			requiredScope = "address"
+		}
+		if !hasOIDCScope(scope, requiredScope) {
 			continue
 		}
 		var value interface{}
 		if json.Unmarshal(raw, &value) == nil {
-			response[name] = value
+			result[name] = value
 		}
 	}
-	writeOIDCJSON(w, http.StatusOK, response)
+	return result
 }
 
 func (p *oidcProvider) signJWT(claims map[string]interface{}) (string, error) {
@@ -981,7 +1002,7 @@ func validOIDCScope(scope string) bool {
 	}
 	seen := make(map[string]bool, len(scopes))
 	for _, item := range scopes {
-		if item != "openid" && item != "profile" && item != "email" {
+		if item != "openid" && item != "profile" && item != "email" && item != "phone" && item != "address" {
 			return false
 		}
 		if seen[item] {
