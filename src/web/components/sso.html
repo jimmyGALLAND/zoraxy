@@ -295,9 +295,16 @@
                 <div id="oidcSecretNotice" class="ui positive message" style="display:none;">
                     <div class="header">Client created — save this secret now</div>
                     <p>The secret is displayed only once and cannot be retrieved later.</p>
-                    <div class="ui action input" style="width:100%;">
-                        <input id="oidcNewClientSecret" type="text" readonly>
-                        <button class="ui button" type="button" id="oidcCopySecret">Copy</button>
+                    <div class="field">
+                        <label for="oidcNewClientID">Client ID</label>
+                        <input id="oidcNewClientID" type="text" readonly>
+                    </div>
+                    <div class="field">
+                        <label for="oidcNewClientSecret">Client Secret</label>
+                        <div class="ui action input" style="width:100%;">
+                            <input id="oidcNewClientSecret" type="text" readonly>
+                            <button class="ui button" type="button" id="oidcCopySecret">Copy</button>
+                        </div>
                     </div>
                 </div>
                 <h4>Registered clients</h4>
@@ -576,8 +583,9 @@
                 redirect_uris: redirectURIs
             }),
             success: function(data) {
-                $('#oidcSecretNotice').show();
+                $('#oidcNewClientID').val(data.client && data.client.client_id ? data.client.client_id : '');
                 $('#oidcNewClientSecret').val(data.client_secret || '');
+                $('#oidcSecretNotice').show();
                 $('#zorxAuthOIDCCreateForm')[0].reset();
                 oidcAutoRedirectURI = '';
                 $('#oidcProxyDomain').dropdown('clear');
