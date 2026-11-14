@@ -30,9 +30,9 @@ const (
 	oidcCodeLifetime = 2 * time.Minute
 	oidcTokenLifetime = time.Hour
 
-	oidcACRBasic              = "urn:celjim:auth:basic"
-	oidcACRMFA                = "urn:celjim:auth:mfa"
-	oidcACRPhishingResistant  = "urn:celjim:auth:phishing-resistant"
+	oidcACRBasic              = "urn:zoraxy:auth:basic"
+	oidcACRMFA                = "urn:zoraxy:auth:mfa"
+	oidcACRPhishingResistant  = "urn:zoraxy:auth:phishing-resistant"
 )
 
 type OIDCClient struct {
@@ -387,7 +387,7 @@ func (p *oidcProvider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 // handleLogout supports Gitea's RP-initiated logout redirect without ending the
 // central Zoraxy Auth session. Gitea destroys its own local session before
 // redirecting the browser here. The registered client and its proxy domain are
-// checked against the client's registered redirect URIs before sending the browser to the portal landing page.
+// checked against the client's registered redirect URIs before redirecting the browser.
 
 // isOIDCProxyLogoutHostAllowed validates the logout host against the primary
 // proxy domain and aliases supplied by the dynamic proxy router. Wildcard
@@ -469,8 +469,7 @@ func (p *oidcProvider) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// post_logout_redirect_uri must exactly match one of this client's
-	// registered Allowed Redirect URIs. This permits the shared portal landing
-	// page (https://portail.celjim.fr) without accepting arbitrary destinations.
+	// registered Allowed Redirect URIs without accepting arbitrary destinations.
 	if !isRegisteredOIDCLogoutRedirectURI(redirectURIs[0], client.RedirectURIs) ||
 		postLogoutURI.Scheme != "https" || postLogoutURI.Host == "" ||
 		postLogoutURI.User != nil || postLogoutURI.Fragment != "" || postLogoutURI.Opaque != "" {
@@ -480,7 +479,7 @@ func (p *oidcProvider) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 	// Deliberately do not revoke the Zoraxy Auth gateway session here. This
 	// endpoint is used for relying-party local logout handoffs.
-	http.Redirect(w, r, "https://portail.celjim.fr", http.StatusFound)
+	http.Redirect(w, r, postLogoutURI.String(), http.StatusFound)
 }
 
 func (p *oidcProvider) handleJWKS(w http.ResponseWriter, r *http.Request) {
@@ -865,12 +864,6 @@ func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 			response[name] = value
 		}
 	}
-	// Expose the account login as a stable, explicit UserInfo claim.
-	// This is required by relying parties such as Synology DSM that allow
-	// the username claim to be selected independently of preferred_username.
-	// Set it after custom claims so user-defined claims cannot override it.
-	response["username"] = user.Username
-
 	writeOIDCJSON(w, http.StatusOK, response)
 }
 
