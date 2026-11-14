@@ -865,6 +865,12 @@ func (p *oidcProvider) handleUserInfo(w http.ResponseWriter, r *http.Request) {
 			response[name] = value
 		}
 	}
+	// Expose the account login as a stable, explicit UserInfo claim.
+	// This is required by relying parties such as Synology DSM that allow
+	// the username claim to be selected independently of preferred_username.
+	// Set it after custom claims so user-defined claims cannot override it.
+	response["username"] = user.Username
+
 	writeOIDCJSON(w, http.StatusOK, response)
 }
 
