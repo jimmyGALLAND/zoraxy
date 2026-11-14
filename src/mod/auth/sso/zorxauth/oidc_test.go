@@ -227,8 +227,8 @@ func TestValidOIDCCodeChallenge(t *testing.T) {
 
 func TestIsOIDCProxyLogoutHostAllowed(t *testing.T) {
 	resolveAliases := func(primary string) []string {
-		if primary == "cloud.diagimm.fr" {
-			return []string{"cloud.celjim.fr", "*.apps.celjim.fr"}
+		if primary == "proxy.example.test" {
+			return []string{"alias.example.test", "*.apps.example.test"}
 		}
 		return nil
 	}
@@ -239,13 +239,13 @@ func TestIsOIDCProxyLogoutHostAllowed(t *testing.T) {
 		resolve func(string) []string
 		want bool
 	}{
-		{name: "primary domain", host: "cloud.diagimm.fr", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: true},
-		{name: "configured alias", host: "cloud.celjim.fr", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: true},
-		{name: "wildcard alias", host: "files.apps.celjim.fr", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: true},
-		{name: "case insensitive", host: "CLOUD.CELJIM.FR.", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: true},
-		{name: "unrelated host", host: "attacker.example.test", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: false},
-		{name: "no resolver", host: "cloud.celjim.fr", primary: "cloud.diagimm.fr", want: false},
-		{name: "empty host", host: "", primary: "cloud.diagimm.fr", resolve: resolveAliases, want: false},
+		{name: "primary domain", host: "proxy.example.test", primary: "proxy.example.test", resolve: resolveAliases, want: true},
+		{name: "configured alias", host: "alias.example.test", primary: "proxy.example.test", resolve: resolveAliases, want: true},
+		{name: "wildcard alias", host: "files.apps.example.test", primary: "proxy.example.test", resolve: resolveAliases, want: true},
+		{name: "case insensitive", host: "ALIAS.EXAMPLE.TEST.", primary: "proxy.example.test", resolve: resolveAliases, want: true},
+		{name: "unrelated host", host: "attacker.example.test", primary: "proxy.example.test", resolve: resolveAliases, want: false},
+		{name: "no resolver", host: "alias.example.test", primary: "proxy.example.test", want: false},
+		{name: "empty host", host: "", primary: "proxy.example.test", resolve: resolveAliases, want: false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -258,22 +258,22 @@ func TestIsOIDCProxyLogoutHostAllowed(t *testing.T) {
 
 func TestIsRegisteredOIDCLogoutRedirectURI(t *testing.T) {
 	registered := []string{
-		"https://cloud.celjim.fr/apps/user_oidc/code",
-		"https://portail.celjim.fr",
+		"https://app.example.test/apps/user_oidc/code",
+		"https://app.example.test/logout",
 	}
 	tests := []struct {
 		name string
 		uri  string
 		want bool
 	}{
-		{name: "registered portal landing page", uri: "https://portail.celjim.fr", want: true},
-		{name: "registered callback URI", uri: "https://cloud.celjim.fr/apps/user_oidc/code", want: true},
+		{name: "registered logout URI", uri: "https://app.example.test/logout", want: true},
+		{name: "registered callback URI", uri: "https://app.example.test/apps/user_oidc/code", want: true},
 		{name: "unregistered host", uri: "https://attacker.example.test", want: false},
-		{name: "unregistered path", uri: "https://portail.celjim.fr/other", want: false},
-		{name: "unregistered query", uri: "https://portail.celjim.fr?next=attacker", want: false},
+		{name: "unregistered path", uri: "https://app.example.test/logout/other", want: false},
+		{name: "unregistered query", uri: "https://app.example.test/logout?next=attacker", want: false},
 		{name: "plain HTTP", uri: "http://portail.celjim.fr", want: false},
 		{name: "userinfo", uri: "https://user@portail.celjim.fr", want: false},
-		{name: "fragment", uri: "https://portail.celjim.fr#section", want: false},
+		{name: "fragment", uri: "https://app.example.test/logout#section", want: false},
 		{name: "malformed URI", uri: "://invalid", want: false},
 	}
 	for _, test := range tests {
