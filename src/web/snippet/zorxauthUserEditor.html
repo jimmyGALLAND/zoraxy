@@ -461,7 +461,7 @@
 				["name","Name","text"],["given_name","Given name","text"],["family_name","Family name","text"],
 				["middle_name","Middle name","text"],["nickname","Nickname","text"],["profile","Profile URL","url"],
 				["picture","Picture URL","url"],["website","Website URL","url"],["gender","Gender","text"],
-				["birthdate","Birthdate","date"],["zoneinfo","Time zone","text"],["locale","Locale","text"],
+				["birthdate","Birthdate","text"],["zoneinfo","Time zone","text"],["locale","Locale","text"],
 				["updated_at","Updated at (Unix timestamp)","number"],["phone_number","Phone number","tel"]
 			];
 
@@ -536,7 +536,7 @@
 				if(invalid){ notify('Custom claim names must be unique and must not conflict with standard or protocol claims.', false); return null; }
 				return claims;
 			}
-			const oidcReservedClaimNames = new Set(['iss','sub','aud','exp','iat','nbf','jti','nonce','azp','auth_time','at_hash','c_hash','token_use','scope','amr','acr']);
+			const oidcReservedClaimNames = new Set(['iss','sub','aud','exp','iat','nbf','jti','nonce','azp','auth_time','at_hash','c_hash','token_use','scope','amr','acr','email','preferred_username']);
 
 			function openEditUser(btn){
 				const row = $(btn).closest('.userRow');
