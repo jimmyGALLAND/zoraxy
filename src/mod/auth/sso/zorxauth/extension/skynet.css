@@ -132,7 +132,7 @@
   height: 2px;
   margin: 0 auto;
   border-radius: 2px;
-  background: var(--sky-cyan);
+  background: var(--sky-cyan) !important;
 }
 
 #skynet-sso-bar[data-collapsed="true"][data-show-notch="true"] .skynet-sso-tab {
