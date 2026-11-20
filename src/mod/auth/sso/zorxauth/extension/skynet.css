@@ -1,0 +1,34 @@
+#skynet-sso-bar {
+  --sky-bg: rgba(7, 18, 35, .96);
+  --sky-panel: #0c213c;
+  --sky-line: rgba(57, 190, 255, .24);
+  --sky-cyan: #38c8ff;
+  --sky-text: #e8f5ff;
+  --sky-muted: #91abc2;
+  position: fixed; z-index: 2147483647; inset: 0 0 auto 0;
+  min-height: 42px; box-sizing: border-box; display: flex; align-items: center;
+  gap: 18px; padding: 6px 14px; color: var(--sky-text);
+  background: linear-gradient(100deg, var(--sky-bg), #0b2948 65%, #10213b);
+  border-bottom: 1px solid var(--sky-line);
+  box-shadow: 0 5px 22px rgba(0,0,0,.22);
+  font: 12px/1.4 Inter, "Segoe UI", sans-serif;
+}
+#skynet-sso-bar * { box-sizing: border-box; }
+#skynet-sso-bar .skynet-sso-brand { display:flex; align-items:center; gap:8px; letter-spacing:.12em; font-weight:700; white-space:nowrap; }
+#skynet-sso-bar .skynet-sso-brand b { color:var(--sky-cyan); }
+#skynet-sso-bar .skynet-sso-mark { display:grid; place-items:center; width:25px; height:25px; border:1px solid var(--sky-cyan); border-radius:7px; color:var(--sky-cyan); font-weight:800; box-shadow:0 0 12px rgba(56,200,255,.2); }
+#skynet-sso-bar .skynet-sso-status { display:flex; align-items:center; gap:8px; color:var(--sky-muted); }
+#skynet-sso-bar .skynet-sso-status i { width:7px; height:7px; border-radius:50%; background:#71869a; }
+#skynet-sso-bar[data-state="authenticated"] .skynet-sso-status i { background:#35d69a; box-shadow:0 0 9px #35d69a; }
+#skynet-sso-bar[data-state="unavailable"] .skynet-sso-status i { background:#ffb454; }
+#skynet-sso-bar .skynet-sso-user { color:#c9eaff; font-weight:600; }
+#skynet-sso-bar .skynet-sso-logout { margin-left:auto; border:1px solid rgba(56,200,255,.55); border-radius:6px; padding:6px 11px; background:rgba(14,75,112,.55); color:#eaf8ff; cursor:pointer; font:inherit; }
+#skynet-sso-bar .skynet-sso-logout:hover { background:#12517a; }
+#skynet-sso-bar .skynet-sso-logout:disabled { opacity:.6; cursor:wait; }
+#skynet-sso-bar .skynet-sso-hide { border:0; background:transparent; color:#8da7be; font-size:20px; line-height:1; cursor:pointer; padding:2px 4px; }
+@media (max-width:600px) {
+  #skynet-sso-bar { gap:10px; padding:6px 9px; }
+  #skynet-sso-bar .skynet-sso-brand { letter-spacing:.04em; }
+  #skynet-sso-bar .skynet-sso-status { font-size:11px; }
+  #skynet-sso-bar .skynet-sso-logout { padding:5px 7px; font-size:11px; }
+}
