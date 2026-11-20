@@ -71,6 +71,140 @@
 
   document.documentElement.appendChild(bar);
 
+  const dialog = document.createElement("div");
+  dialog.id = "skynet-sso-dialog";
+  dialog.innerHTML = `
+    <div class="skynet-sso-dialog-backdrop"></div>
+    <section
+      class="skynet-sso-dialog-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="skynet-sso-dialog-title"
+      aria-describedby="skynet-sso-dialog-description"
+      tabindex="-1"
+    >
+      <div class="skynet-sso-dialog-symbol" aria-hidden="true">
+        <span></span>
+      </div>
+      <p class="skynet-sso-dialog-eyebrow">SKYNET SECURITY</p>
+      <h2 id="skynet-sso-dialog-title">Confirmer la déconnexion</h2>
+      <p id="skynet-sso-dialog-description">
+        Souhaitez-vous vraiment fermer votre session SKYNET sur l’ensemble des services ?
+      </p>
+      <p class="skynet-sso-dialog-error" role="alert" hidden></p>
+      <div class="skynet-sso-dialog-progress" aria-live="polite" hidden>
+        <span class="skynet-sso-spinner" aria-hidden="true"></span>
+        <span class="skynet-sso-dialog-progress-label">Déconnexion en cours…</span>
+      </div>
+      <div class="skynet-sso-dialog-actions">
+        <button class="skynet-sso-dialog-cancel" type="button">Annuler</button>
+        <button class="skynet-sso-dialog-confirm" type="button">
+          <span>Me déconnecter</span>
+          <span class="skynet-sso-dialog-arrow" aria-hidden="true">↗</span>
+        </button>
+      </div>
+    </section>
+  `;
+  document.documentElement.appendChild(dialog);
+
+  const dialogPanel = dialog.querySelector(".skynet-sso-dialog-panel");
+  const dialogCancel = dialog.querySelector(".skynet-sso-dialog-cancel");
+  const dialogConfirm = dialog.querySelector(".skynet-sso-dialog-confirm");
+  const dialogError = dialog.querySelector(".skynet-sso-dialog-error");
+  const dialogProgress = dialog.querySelector(".skynet-sso-dialog-progress");
+  const dialogProgressLabel = dialog.querySelector(".skynet-sso-dialog-progress-label");
+  const dialogDescription = dialog.querySelector("#skynet-sso-dialog-description");
+
+  function closeLogoutDialog() {
+    if (dialog.dataset.busy === "true") return;
+    dialog.dataset.open = "false";
+    dialogError.hidden = true;
+    logout.focus();
+  }
+
+  function openLogoutDialog() {
+    dialog.dataset.open = "true";
+    dialog.dataset.busy = "false";
+    dialogError.hidden = true;
+    dialogProgress.hidden = true;
+    dialogDescription.hidden = false;
+    dialogConfirm.disabled = false;
+    dialogCancel.disabled = false;
+    dialogConfirm.querySelector("span").textContent = "Me déconnecter";
+    dialogPanel.focus();
+  }
+
+  function setLogoutBusy(busy) {
+    dialog.dataset.busy = String(busy);
+    dialogProgress.hidden = !busy;
+    dialogDescription.hidden = busy;
+    dialogCancel.disabled = busy;
+    dialogConfirm.disabled = busy;
+    dialogConfirm.querySelector("span").textContent = busy
+      ? "Déconnexion…"
+      : "Me déconnecter";
+    dialogProgressLabel.textContent = "Déconnexion en cours…";
+    dialogError.hidden = true;
+  }
+
+  dialogCancel.addEventListener("click", closeLogoutDialog);
+  dialog.querySelector(".skynet-sso-dialog-backdrop")
+    .addEventListener("click", closeLogoutDialog);
+  dialogConfirm.addEventListener("click", async () => {
+    if (dialog.dataset.busy === "true") return;
+
+    setLogoutBusy(true);
+
+    try {
+      const result = await browser.runtime.sendMessage({
+        type: "SKYNET_SSO_LOGOUT"
+      });
+
+      if (!result?.success) {
+        throw new Error("Le serveur n’a pas confirmé la déconnexion.");
+      }
+
+      dialogProgressLabel.textContent = "Session fermée. Actualisation…";
+      render({ status: "anonymous" });
+      window.location.reload();
+    } catch (error) {
+      dialog.dataset.busy = "false";
+      dialogProgress.hidden = true;
+      dialogDescription.hidden = false;
+      dialogCancel.disabled = false;
+      dialogConfirm.disabled = false;
+      dialogConfirm.querySelector("span").textContent = "Réessayer";
+      dialogError.textContent = error.message || "La déconnexion a échoué. Veuillez réessayer.";
+      dialogError.hidden = false;
+    }
+  });
+
+  document.addEventListener("keydown", event => {
+    if (dialog.dataset.open !== "true") return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeLogoutDialog();
+    }
+    if (event.key === "Tab") {
+      const focusable = [dialogCancel, dialogConfirm].filter(
+        element => !element.disabled
+      );
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  });
+
   const label = bar.querySelector(".skynet-sso-label");
   const user = bar.querySelector(".skynet-sso-user");
   const logout = bar.querySelector(".skynet-sso-logout");
@@ -155,22 +289,9 @@
     }
   });
 
-  logout.addEventListener("click", async event => {
+  logout.addEventListener("click", event => {
+    event.preventDefault();
     event.stopPropagation();
-    logout.disabled = true;
-    logout.textContent = "Déconnexion…";
-
-    try {
-      await browser.runtime.sendMessage({
-        type: "SKYNET_SSO_LOGOUT"
-      });
-
-      render({ status: "anonymous" });
-    } catch (error) {
-      label.textContent = error.message || "Échec de la déconnexion";
-    } finally {
-      logout.disabled = false;
-      logout.textContent = "Déconnexion";
-    }
+    openLogoutDialog();
   });
 })();

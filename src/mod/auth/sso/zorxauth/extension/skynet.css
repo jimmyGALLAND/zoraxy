@@ -212,3 +212,245 @@
     font-size: 11px;
   }
 }
+
+
+/* Confirmation de déconnexion */
+#skynet-sso-dialog {
+  --sky-dialog-bg: #08182b;
+  --sky-dialog-line: rgba(76, 190, 245, 0.2);
+  --sky-dialog-cyan: #54d2ff;
+  --sky-dialog-text: #edf8ff;
+  --sky-dialog-muted: #9bb2c8;
+
+  position: fixed;
+  z-index: 2147483647;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--sky-dialog-text);
+  font: 14px/1.55 Inter, "Segoe UI", sans-serif;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.24s ease, visibility 0.24s ease;
+}
+
+#skynet-sso-dialog[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#skynet-sso-dialog *,
+#skynet-sso-dialog *::before,
+#skynet-sso-dialog *::after {
+  box-sizing: border-box;
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 9, 19, 0.7);
+  -webkit-backdrop-filter: blur(7px);
+  backdrop-filter: blur(7px);
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-panel {
+  position: relative;
+  width: min(100%, 420px);
+  padding: 34px 34px 28px;
+  overflow: hidden;
+  text-align: center;
+  background:
+    radial-gradient(ellipse at 50% -20%, rgba(40, 155, 220, 0.2), transparent 62%),
+    linear-gradient(145deg, #0c2139, var(--sky-dialog-bg) 72%);
+  border: 1px solid var(--sky-dialog-line);
+  border-radius: 18px;
+  box-shadow:
+    0 28px 90px rgba(0, 0, 0, 0.48),
+    inset 0 1px rgba(255, 255, 255, 0.045);
+  transform: translateY(12px) scale(0.985);
+  transition: transform 0.28s cubic-bezier(0.2, 0.75, 0.25, 1);
+  outline: none;
+}
+
+#skynet-sso-dialog[data-open="true"] .skynet-sso-dialog-panel {
+  transform: translateY(0) scale(1);
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-symbol {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 18px;
+  border: 1px solid rgba(84, 210, 255, 0.28);
+  border-radius: 16px;
+  background: rgba(40, 155, 220, 0.1);
+  box-shadow: 0 0 28px rgba(40, 155, 220, 0.1);
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-symbol span {
+  width: 17px;
+  height: 17px;
+  border: 1.7px solid var(--sky-dialog-cyan);
+  border-radius: 50%;
+  position: relative;
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-symbol span::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  right: -4px;
+  bottom: -2px;
+  border-right: 1.7px solid var(--sky-dialog-cyan);
+  border-bottom: 1.7px solid var(--sky-dialog-cyan);
+  background: #0b1c30;
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-eyebrow {
+  margin: 0 0 8px;
+  color: var(--sky-dialog-cyan);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+
+#skynet-sso-dialog h2 {
+  margin: 0;
+  color: var(--sky-dialog-text);
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+#skynet-sso-dialog #skynet-sso-dialog-description {
+  max-width: 310px;
+  margin: 12px auto 0;
+  color: var(--sky-dialog-muted);
+  font-size: 13px;
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 27px;
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-actions button {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-cancel {
+  color: #c2d2e1;
+  border: 1px solid rgba(158, 188, 215, 0.18);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-cancel:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(158, 188, 215, 0.32);
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-confirm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  color: #041523;
+  border: 1px solid #69d7ff;
+  background: linear-gradient(115deg, #72ddff, #35b8ee);
+  box-shadow: 0 5px 18px rgba(45, 174, 230, 0.2);
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-confirm:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: linear-gradient(115deg, #9ae8ff, #53c8f5);
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-confirm:disabled,
+#skynet-sso-dialog .skynet-sso-dialog-cancel:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-arrow {
+  font-size: 15px;
+  line-height: 1;
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  margin-top: 23px;
+  color: #c4eaff;
+  font-size: 12px;
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-progress[hidden],
+#skynet-sso-dialog [hidden] {
+  display: none !important;
+}
+
+#skynet-sso-dialog .skynet-sso-spinner {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  border: 2px solid rgba(84, 210, 255, 0.2);
+  border-top-color: var(--sky-dialog-cyan);
+  border-radius: 50%;
+  animation: skynet-sso-spin 0.75s linear infinite;
+}
+
+#skynet-sso-dialog .skynet-sso-dialog-error {
+  margin: 16px 0 0;
+  color: #ff9c9c;
+  font-size: 12px;
+}
+
+@keyframes skynet-sso-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 480px) {
+  #skynet-sso-dialog {
+    padding: 16px;
+  }
+
+  #skynet-sso-dialog .skynet-sso-dialog-panel {
+    padding: 29px 22px 23px;
+  }
+
+  #skynet-sso-dialog .skynet-sso-dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  #skynet-sso-dialog .skynet-sso-dialog-actions button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #skynet-sso-dialog,
+  #skynet-sso-dialog .skynet-sso-dialog-panel,
+  #skynet-sso-dialog .skynet-sso-dialog-actions button {
+    transition: none;
+  }
+
+  #skynet-sso-dialog .skynet-sso-spinner {
+    animation-duration: 1.8s;
+  }
+}
