@@ -1,1 +1,94 @@
-*{box-sizing:border-box}body{margin:0;background:#071629;color:#e8f5ff;font:14px/1.5 Inter,"Segoe UI",sans-serif}main{max-width:680px;margin:48px auto;padding:28px;background:#0c213c;border:1px solid #1d4565;border-radius:12px}header{display:flex;gap:14px;align-items:center;margin-bottom:28px}.app-icon{width:54px;height:54px;object-fit:contain}h1{margin:0;letter-spacing:.1em;font-size:19px}header p,.hint{margin:2px 0;color:#91abc2}label{display:block;margin:18px 0 7px;color:#c8e3f8}input:not([type=checkbox]),textarea{width:100%;padding:10px;border:1px solid #294c68;border-radius:6px;background:#071629;color:#e8f5ff;font:inherit}textarea{resize:vertical}.toggle-row{display:flex;align-items:center;gap:10px;margin-top:22px}.toggle-row input{width:17px;height:17px;accent-color:#38c8ff}button{margin-top:18px;padding:10px 18px;border:1px solid #38aee0;border-radius:6px;background:#10436a;color:white;font:inherit;cursor:pointer}#result{margin-left:12px;color:#57ddb0}
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #071629;
+  color: #e8f5ff;
+  font: 14px/1.5 Inter, "Segoe UI", sans-serif;
+}
+
+main {
+  max-width: 680px;
+  margin: 48px auto;
+  padding: 28px;
+  background: #0c213c;
+  border: 1px solid #1d4565;
+  border-radius: 12px;
+}
+
+header {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.app-icon {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+}
+
+h1 {
+  margin: 0;
+  letter-spacing: 0.1em;
+  font-size: 19px;
+}
+
+header p,
+.hint {
+  margin: 2px 0;
+  color: #91abc2;
+}
+
+label {
+  display: block;
+  margin: 18px 0 7px;
+  color: #c8e3f8;
+}
+
+input:not([type="checkbox"]),
+textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #294c68;
+  border-radius: 6px;
+  background: #071629;
+  color: #e8f5ff;
+  font: inherit;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.toggle-row input {
+  width: 17px;
+  height: 17px;
+  accent-color: #38c8ff;
+}
+
+button {
+  margin-top: 18px;
+  padding: 10px 18px;
+  border: 1px solid #38aee0;
+  border-radius: 6px;
+  background: #10436a;
+  color: white;
+  font: inherit;
+  cursor: pointer;
+}
+
+#result {
+  margin-left: 12px;
+  color: #57ddb0;
+}
