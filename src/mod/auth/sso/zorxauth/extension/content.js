@@ -30,7 +30,7 @@
     event.stopPropagation();
     const cfg = await browser.storage.local.get({ homeUrl: "https://celjim.fr" });
     const destination = String(cfg.homeUrl || "https://celjim.fr").trim();
-    if (/^https?:\\/\\//i.test(destination)) window.location.assign(destination);
+    if (/^https?:\/\//i.test(destination)) window.location.assign(destination);
   });
 
   document.addEventListener("click", event => {
