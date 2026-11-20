@@ -12,7 +12,7 @@
   bar.dataset.showNotch = String(prefs.showNotch !== false);
   bar.setAttribute("aria-live", "polite");
   bar.innerHTML = `
-    <button class="skynet-sso-brand" type="button" title="Accueil SKYNET"><img class="skynet-sso-mark" src="${browser.runtime.getURL("icons/skynet.svg")}" alt=""><span>SKYNET <b>SSO</b></span></button>
+    <button class="skynet-sso-brand" type="button" title="Accueil SKYNET"><img class="skynet-sso-mark" src="${browser.runtime.getURL("icons/skynet.png")}" alt=""><span>SKYNET <b>SSO</b></span></button>
     <div class="skynet-sso-status"><i></i><span class="skynet-sso-label">Vérification de la session…</span></div>
     <div class="skynet-sso-user"></div>
     <button class="skynet-sso-logout" type="button" hidden>Déconnexion</button>

@@ -13,10 +13,10 @@
 #skynet-sso-bar[data-collapsed="true"] { transform: translateY(calc(-100% + 1px)); }
 #skynet-sso-bar .skynet-sso-brand { border:0; padding:0; margin:0; background:transparent; color:inherit; font:inherit; cursor:pointer; display:flex; align-items:center; gap:9px; letter-spacing:.12em; font-weight:700; white-space:nowrap; }
 #skynet-sso-bar .skynet-sso-brand b { color:var(--sky-cyan); }
-#skynet-sso-bar .skynet-sso-mark { width:30px; height:30px; object-fit:contain; }
+#skynet-sso-bar .skynet-sso-mark { width:50px; height:50px; object-fit:contain; }
 #skynet-sso-bar .skynet-sso-status { display:flex; align-items:center; gap:8px; color:var(--sky-muted); }
 #skynet-sso-bar .skynet-sso-status i { width:7px; height:7px; border-radius:50%; background:#71869a; }
-#skynet-sso-bar[data-state="authenticated"] .skynet-sso-status i { background:#35d69a; box-shadow:0 0 9px #35d69a; }
+#skynet-sso-bar[data-state="authenticated"] .skynet-sso-status i { background:#35d69a !important; box-shadow:0 0 9px #35d69a; }
 #skynet-sso-bar[data-state="unavailable"] .skynet-sso-status i { background:#ffb454; }
 #skynet-sso-bar .skynet-sso-user { color:#c9eaff; font-weight:600; }
 #skynet-sso-bar .skynet-sso-logout { margin-left:auto; border:1px solid rgba(56,200,255,.55); border-radius:6px; padding:6px 11px; background:rgba(14,75,112,.55); color:#eaf8ff; cursor:pointer; font:inherit; }

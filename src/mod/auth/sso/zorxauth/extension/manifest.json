@@ -11,7 +11,13 @@
   },
   "permissions": ["storage", "tabs"],
   "host_permissions": ["https://auth.celjim.fr/*", "http://*/*", "https://*/*"],
-  "icons": { "128": "icons/skynet.svg" },
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/skynet.png"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
+  "icons": { "128": "icons/logoSkynet.ico" },
   "background": { "scripts": ["background.js"] },
   "content_scripts": [{
     "matches": ["http://*/*", "https://*/*"],
@@ -23,6 +29,6 @@
   "action": {
     "default_title": "SKYNET SSO",
     "default_popup": "popup.html",
-    "default_icon": { "128": "icons/skynet.svg" }
+    "default_icon": { "128": "icons/logoSkynet.ico" }
   }
 }
