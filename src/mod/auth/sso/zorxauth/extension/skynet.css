@@ -90,7 +90,6 @@
 }
 
 #skynet-sso-bar .skynet-sso-logout {
-  margin-left: auto;
   padding: 6px 11px;
   border: 1px solid rgba(56, 200, 255, 0.55);
   border-radius: 6px;
@@ -109,51 +108,73 @@
   cursor: wait;
 }
 
-#skynet-sso-bar .skynet-sso-collapse {
+#skynet-sso-bar .skynet-sso-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+#skynet-sso-bar .skynet-sso-collapse {
+  display: grid;
+  place-items: center;
   width: 28px;
   height: 28px;
-  margin-left: auto;
+  flex: 0 0 28px;
   padding: 0;
-  border: 1px solid rgba(56, 200, 255, 0.35);
-  border-radius: 6px;
-  background: rgba(14, 75, 112, 0.35);
-  color: var(--sky-cyan);
-  font: 20px/1 "Segoe UI", sans-serif;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+#skynet-sso-bar .skynet-sso-collapse span,
+#skynet-sso-bar .skynet-sso-tab span {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--sky-cyan);
+  border-bottom: 1.5px solid var(--sky-cyan);
+}
+
+#skynet-sso-bar .skynet-sso-collapse span {
+  transform: translateY(2px) rotate(225deg);
 }
 
 #skynet-sso-bar .skynet-sso-collapse:hover {
-  background: rgba(56, 200, 255, 0.18);
-  border-color: var(--sky-cyan);
+  background: rgba(56, 200, 255, 0.1);
+  border-color: rgba(56, 200, 255, 0.22);
 }
 
 #skynet-sso-bar .skynet-sso-tab {
   position: absolute;
   left: 50%;
-  bottom: -17px;
+  bottom: -13px;
   display: none;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 19px;
-  padding: 0 0 2px;
+  width: 42px;
+  height: 14px;
+  padding: 0 0 3px;
   transform: translateX(-50%);
-  border: 1px solid rgba(56, 200, 255, 0.65);
+  border: 1px solid rgba(56, 200, 255, 0.25);
   border-top: 0;
-  border-radius: 0 0 9px 9px;
-  background: #0b2948;
-  box-shadow: 0 3px 9px rgba(0, 0, 0, 0.25);
-  color: var(--sky-cyan);
-  font: 17px/1 "Segoe UI", sans-serif;
+  border-radius: 0 0 8px 8px;
+  background: rgba(11, 41, 72, 0.96);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16);
   cursor: pointer;
+  transition: background 0.2s ease, height 0.2s ease;
+}
+
+#skynet-sso-bar .skynet-sso-tab span {
+  transform: translateY(-2px) rotate(45deg);
 }
 
 #skynet-sso-bar .skynet-sso-tab:hover {
-  background: #10436a;
+  height: 17px;
+  background: #103656;
+  border-color: rgba(56, 200, 255, 0.5);
 }
 
 #skynet-sso-bar[data-collapsed="true"][data-show-notch="true"] .skynet-sso-tab {
@@ -180,6 +201,10 @@
 
   #skynet-sso-bar .skynet-sso-status {
     font-size: 11px;
+  }
+
+  #skynet-sso-bar .skynet-sso-actions {
+    gap: 6px;
   }
 
   #skynet-sso-bar .skynet-sso-logout {

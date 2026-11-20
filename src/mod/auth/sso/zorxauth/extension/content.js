@@ -46,23 +46,27 @@
 
     <div class="skynet-sso-user"></div>
 
-    <button class="skynet-sso-logout" type="button" hidden>
-      Déconnexion
-    </button>
+    <div class="skynet-sso-actions">
+      <button class="skynet-sso-logout" type="button" hidden>
+        Déconnexion
+      </button>
 
-    <button
-      class="skynet-sso-collapse"
-      type="button"
-      aria-label="Masquer la barre SKYNET"
-      title="Masquer la barre"
-    >⌃</button>
+      <button
+        class="skynet-sso-collapse"
+        type="button"
+        aria-label="Masquer la barre SKYNET"
+        title="Masquer la barre"
+      >
+        <span aria-hidden="true"></span>
+      </button>
+    </div>
 
     <button
       class="skynet-sso-tab"
       type="button"
       aria-label="Afficher la barre SKYNET"
       title="Afficher la barre"
-    >⌄</button>
+    ><span aria-hidden="true"></span></button>
   `;
 
   document.documentElement.appendChild(bar);
