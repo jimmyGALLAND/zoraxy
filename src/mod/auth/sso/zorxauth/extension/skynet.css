@@ -11,7 +11,7 @@
 }
 #skynet-sso-bar * { box-sizing: border-box; }
 #skynet-sso-bar[data-collapsed="true"] { transform: translateY(calc(-100% + 1px)); }
-#skynet-sso-bar .skynet-sso-brand { display:flex; align-items:center; gap:9px; letter-spacing:.12em; font-weight:700; white-space:nowrap; }
+#skynet-sso-bar .skynet-sso-brand { border:0; padding:0; margin:0; background:transparent; color:inherit; font:inherit; cursor:pointer; display:flex; align-items:center; gap:9px; letter-spacing:.12em; font-weight:700; white-space:nowrap; }
 #skynet-sso-bar .skynet-sso-brand b { color:var(--sky-cyan); }
 #skynet-sso-bar .skynet-sso-mark { width:30px; height:30px; object-fit:contain; }
 #skynet-sso-bar .skynet-sso-status { display:flex; align-items:center; gap:8px; color:var(--sky-muted); }
