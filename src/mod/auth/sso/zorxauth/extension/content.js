@@ -12,7 +12,7 @@
   bar.dataset.showNotch = String(prefs.showNotch !== false);
   bar.setAttribute("aria-live", "polite");
   bar.innerHTML = `
-    <div class="skynet-sso-brand"><img class="skynet-sso-mark" src="${browser.runtime.getURL("icons/skynet.svg")}" alt=""><span>SKYNET <b>SSO</b></span></div>
+    <button class="skynet-sso-brand" type="button" title="Accueil SKYNET"><img class="skynet-sso-mark" src="${browser.runtime.getURL("icons/skynet.svg")}" alt=""><span>SKYNET <b>SSO</b></span></button>
     <div class="skynet-sso-status"><i></i><span class="skynet-sso-label">Vérification de la session…</span></div>
     <div class="skynet-sso-user"></div>
     <button class="skynet-sso-logout" type="button" hidden>Déconnexion</button>
@@ -23,6 +23,15 @@
   const user = bar.querySelector(".skynet-sso-user");
   const logout = bar.querySelector(".skynet-sso-logout");
   const tab = bar.querySelector(".skynet-sso-tab");
+  const brand = bar.querySelector(".skynet-sso-brand");
+
+  brand.addEventListener("click", async event => {
+    event.preventDefault();
+    event.stopPropagation();
+    const cfg = await browser.storage.local.get({ homeUrl: "https://celjim.fr" });
+    const destination = String(cfg.homeUrl || "https://celjim.fr").trim();
+    if (/^https?:\\/\\//i.test(destination)) window.location.assign(destination);
+  });
 
   document.addEventListener("click", event => {
     if (bar.dataset.collapsed !== "true" && !bar.contains(event.target)) {
