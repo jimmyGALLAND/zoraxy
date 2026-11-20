@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SKYNET SSO",
   "version": "0.1.0",
-  "description": "Affiche l'état de la session SSO Zoraxy et permet une déconnexion globale.",
+  "description": "Affiche l'état de la session SSO Zoraxy et permet une déconnexion.",
   "browser_specific_settings": {
     "gecko": {
       "id": "skynet-sso@celjim.fr",
@@ -11,21 +11,18 @@
   },
   "permissions": ["storage", "tabs"],
   "host_permissions": ["https://auth.celjim.fr/*", "http://*/*", "https://*/*"],
-  "background": {
-    "scripts": ["background.js"]
-  },
+  "icons": { "128": "icons/skynet.svg" },
+  "background": { "scripts": ["background.js"] },
   "content_scripts": [{
     "matches": ["http://*/*", "https://*/*"],
     "js": ["content.js"],
     "css": ["skynet.css"],
     "run_at": "document_idle"
   }],
-  "options_ui": {
-    "page": "options.html",
-    "open_in_tab": true
-  },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
   "action": {
     "default_title": "SKYNET SSO",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": { "128": "icons/skynet.svg" }
   }
 }

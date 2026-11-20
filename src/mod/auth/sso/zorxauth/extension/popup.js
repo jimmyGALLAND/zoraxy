@@ -17,6 +17,6 @@ logout.addEventListener("click", async () => {
   } catch (error) {
     stateNode.textContent = error.message || "Échec de la déconnexion";
     logout.disabled = false;
-    logout.textContent = "Déconnexion globale";
+    logout.textContent = "Déconnexion";
   }
 });
