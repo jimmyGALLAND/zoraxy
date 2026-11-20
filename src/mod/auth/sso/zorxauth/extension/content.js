@@ -51,13 +51,18 @@
     </button>
 
     <button
+      class="skynet-sso-collapse"
+      type="button"
+      aria-label="Masquer la barre SKYNET"
+      title="Masquer la barre"
+    >⌃</button>
+
+    <button
       class="skynet-sso-tab"
       type="button"
       aria-label="Afficher la barre SKYNET"
       title="Afficher la barre"
-    >
-      <span></span>
-    </button>
+    >⌄</button>
   `;
 
   document.documentElement.appendChild(bar);
@@ -66,6 +71,7 @@
   const user = bar.querySelector(".skynet-sso-user");
   const logout = bar.querySelector(".skynet-sso-logout");
   const tab = bar.querySelector(".skynet-sso-tab");
+  const collapse = bar.querySelector(".skynet-sso-collapse");
   const brand = bar.querySelector(".skynet-sso-brand");
 
   brand.addEventListener("click", async event => {
@@ -94,11 +100,20 @@
     }
   }, true);
 
-  tab.addEventListener("click", event => {
+  collapse.addEventListener("click", event => {
     event.preventDefault();
     event.stopPropagation();
-    bar.dataset.collapsed = "false";
+    bar.dataset.collapsed = "true";
   });
+
+  function revealBar(event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    bar.dataset.collapsed = "false";
+  }
+
+  tab.addEventListener("mouseenter", revealBar);
+  tab.addEventListener("click", revealBar);
 
   function render(state) {
     bar.dataset.state = state.status;
