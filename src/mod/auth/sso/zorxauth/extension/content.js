@@ -71,6 +71,16 @@
 
   document.documentElement.appendChild(bar);
 
+  function collapseAfterPageLoad() {
+    bar.dataset.collapsed = "true";
+  }
+
+  if (document.readyState === "complete") {
+    collapseAfterPageLoad();
+  } else {
+    window.addEventListener("load", collapseAfterPageLoad, { once: true });
+  }
+
   const dialog = document.createElement("div");
   dialog.id = "skynet-sso-dialog";
   dialog.innerHTML = `
